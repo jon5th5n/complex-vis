@@ -1,4 +1,7 @@
-use std::ops::{Add, Div, Mul, Neg, Sub};
+use std::{
+    f64::consts::E,
+    ops::{Add, Div, Mul, Neg, Sub},
+};
 
 #[derive(Debug, Clone, Copy)]
 pub struct ComplexCartesian {
@@ -85,6 +88,10 @@ impl Complex {
 
     pub fn i() -> Self {
         Self::new_cartesian(0.0, 1.0)
+    }
+
+    pub fn e() -> Self {
+        Self::new_real(E)
     }
 }
 
@@ -244,5 +251,21 @@ impl Complex {
 
     pub fn root(self, other: Self) -> Option<Self> {
         self.pow(other.reciprocal()?)
+    }
+}
+
+impl Complex {
+    pub fn sin(self) -> Option<Self> {
+        let re = self.cartesian.re.sin() * self.cartesian.im.cosh();
+        let im = self.cartesian.re.cos() * self.cartesian.im.sinh();
+
+        Some(Self::new_cartesian(re, im))
+    }
+
+    pub fn cos(self) -> Option<Self> {
+        let re = self.cartesian.re.cos() * self.cartesian.im.cosh();
+        let im = -(self.cartesian.re.sin() * self.cartesian.im.sinh());
+
+        Some(Self::new_cartesian(re, im))
     }
 }
