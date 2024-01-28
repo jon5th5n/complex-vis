@@ -34,7 +34,7 @@ fn main() {
             },
         );
 
-        canvas.draw_circle(
+        canvas.draw_circle_solid(
             x1,
             y1,
             (((x1 - mouse_x as isize) * (x1 - mouse_x as isize)
@@ -48,8 +48,23 @@ fn main() {
             },
         );
 
-        canvas.draw_polygon(
-            vec![(100, 100), (200, 250), (400, 200), (220, 200)],
+        canvas.draw_circle(
+            x1,
+            y1,
+            (((x1 - mouse_x as isize) * (x1 - mouse_x as isize)
+                + (y1 - mouse_y as isize) * (y1 - mouse_y as isize)) as f32)
+                .sqrt() as usize,
+            RGBA {
+                r: 0,
+                g: 255,
+                b: 0,
+                a: 255,
+            },
+        );
+
+        canvas.draw_polygon_solid(
+            vec![(100, 100), (220, 200), (400, 200), (200, 250)],
+            true,
             RGBA {
                 r: 0,
                 g: 0,
@@ -57,6 +72,17 @@ fn main() {
                 a: 255,
             },
         );
+
+        // canvas.draw_polygon_solid(
+        //     vec![(400, 400), (600, 400), (600, 500), (500, 900)],
+        //     true,
+        //     RGBA {
+        //         r: 0,
+        //         g: 255,
+        //         b: 0,
+        //         a: 255,
+        //     },
+        // );
 
         window
             .update_with_buffer(&canvas.buffer_u32(), WIDTH, HEIGHT)
