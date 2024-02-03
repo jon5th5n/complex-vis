@@ -1,45 +1,4 @@
-#[derive(Debug, Clone, Copy)]
-pub struct RGBA {
-    pub r: u8,
-    pub g: u8,
-    pub b: u8,
-    pub a: u8,
-}
-
-impl RGBA {
-    pub fn to_rgb(self) -> (RGB, u8) {
-        (
-            RGB {
-                r: self.r,
-                g: self.g,
-                b: self.b,
-            },
-            self.a,
-        )
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct RGB {
-    pub r: u8,
-    pub g: u8,
-    pub b: u8,
-}
-
-impl RGB {
-    pub fn add_rgba(self, other: RGBA) -> Self {
-        let (other, alpha) = other.to_rgb();
-        self.lerp(&other, alpha as f64 / 255.0)
-    }
-
-    pub fn lerp(&self, other: &Self, a: f64) -> Self {
-        RGB {
-            r: ((1.0 - a) * self.r as f64 + a * other.r as f64) as u8,
-            g: ((1.0 - a) * self.g as f64 + a * other.g as f64) as u8,
-            b: ((1.0 - a) * self.b as f64 + a * other.b as f64) as u8,
-        }
-    }
-}
+use crate::color::{RGB, RGBA};
 
 pub trait Draw {
     fn draw(&self, canvas: &mut Canvas);
@@ -105,7 +64,7 @@ impl Canvas {
 }
 
 impl Canvas {
-    pub fn draw<T>(&mut self, drawable: T)
+    pub fn draw<T>(&mut self, drawable: &T)
     where
         T: Draw,
     {
@@ -208,10 +167,10 @@ impl Canvas {
             self.draw_pixel(x - x_offset, y + y_offset, color);
             self.draw_pixel(x - x_offset, y - y_offset, color);
 
-            self.draw_pixel(y + y_offset, x + x_offset, color);
-            self.draw_pixel(y + y_offset, x - x_offset, color);
-            self.draw_pixel(y - y_offset, x - x_offset, color);
-            self.draw_pixel(y - y_offset, x + x_offset, color);
+            self.draw_pixel(x + y_offset, y + x_offset, color);
+            self.draw_pixel(x + y_offset, y - x_offset, color);
+            self.draw_pixel(x - y_offset, y - x_offset, color);
+            self.draw_pixel(x - y_offset, y + x_offset, color);
 
             e += 2 * y_offset + 1;
             y_offset += 1;
@@ -238,10 +197,10 @@ impl Canvas {
             left_buff[(y + y_offset - (y - r as isize)) as usize] = x - x_offset;
             left_buff[(y - y_offset - (y - r as isize)) as usize] = x - x_offset;
 
-            right_buff[(x + x_offset - (y - r as isize)) as usize] = y + y_offset;
-            right_buff[(x - x_offset - (y - r as isize)) as usize] = y + y_offset;
-            left_buff[(x + x_offset - (y - r as isize)) as usize] = y - y_offset;
-            left_buff[(x - x_offset - (y - r as isize)) as usize] = y - y_offset;
+            right_buff[(y + x_offset - (y - r as isize)) as usize] = x + y_offset;
+            right_buff[(y - x_offset - (y - r as isize)) as usize] = x + y_offset;
+            left_buff[(y + x_offset - (y - r as isize)) as usize] = x - y_offset;
+            left_buff[(y - x_offset - (y - r as isize)) as usize] = x - y_offset;
 
             e += 2 * y_offset + 1;
             y_offset += 1;

@@ -3,6 +3,7 @@ use std::ops::{Div, Mul};
 use crate::vector::Vector;
 
 #[derive(Debug, Clone, Copy)]
+/// A simple Quaternion implementation just meant for rotation of vectors.
 pub struct Quaternion {
     re: f64,
     i: f64,
@@ -11,10 +12,12 @@ pub struct Quaternion {
 }
 
 impl Quaternion {
+    /// Creates a new quaternion.
     pub fn new(re: f64, i: f64, j: f64, k: f64) -> Self {
         Self { re, i, j, k }
     }
 
+    /// Creates a quaternion describing a rotation around an axis given by a vector.
     pub fn new_rotation(rot_axis: Vector, angle: f64) -> Self {
         let rot_axis = rot_axis.normalize();
 
@@ -29,6 +32,7 @@ impl Quaternion {
         }
     }
 
+    /// Creates a quaternion from a vector with its real part set to 0.
     pub fn from_vector(v: Vector) -> Self {
         Self {
             re: 0.0,
@@ -38,6 +42,7 @@ impl Quaternion {
         }
     }
 
+    /// Turns the quaternion into a vector disregarding its real part.
     pub fn to_vector(self) -> Vector {
         Vector {
             x: self.i,
@@ -48,12 +53,14 @@ impl Quaternion {
 }
 
 impl Quaternion {
+    /// Returns the length of the quaternion.
     pub fn length(&self) -> f64 {
         (self.re * self.re + self.i * self.i + self.j * self.j + self.k * self.k).sqrt()
     }
 }
 
 impl Quaternion {
+    /// Returns the conjugate of the quaternion.
     pub fn conj(self) -> Self {
         Self {
             re: self.re,
@@ -63,6 +70,7 @@ impl Quaternion {
         }
     }
 
+    /// Normalizes the quaternion and returns it.
     pub fn normalize(self) -> Self {
         self / self.length()
     }

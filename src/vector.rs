@@ -3,6 +3,7 @@ use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssi
 use crate::quaternion::Quaternion;
 
 #[derive(Debug, Clone, Copy)]
+/// A 3-dimensional vector of 64-bit floating point values.
 pub struct Vector {
     pub x: f64,
     pub y: f64,
@@ -10,10 +11,12 @@ pub struct Vector {
 }
 
 impl Vector {
+    /// Creates a new vector.
     pub fn new(x: f64, y: f64, z: f64) -> Self {
         Self { x, y, z }
     }
 
+    /// Creates a zero vector.
     pub fn zero() -> Self {
         Self {
             x: 0.0,
@@ -22,6 +25,7 @@ impl Vector {
         }
     }
 
+    /// Creates a unit vector pointing into x direction.
     pub fn unit_x() -> Self {
         Self {
             x: 1.0,
@@ -30,6 +34,7 @@ impl Vector {
         }
     }
 
+    /// Creates a unit vector pointing into y direction.
     pub fn unit_y() -> Self {
         Self {
             x: 0.0,
@@ -38,6 +43,7 @@ impl Vector {
         }
     }
 
+    /// Creates a unit vector pointing into z direction.
     pub fn unit_z() -> Self {
         Self {
             x: 0.0,
@@ -48,15 +54,19 @@ impl Vector {
 }
 
 impl Vector {
+    /// Returns the length of the vector.
     pub fn length(self) -> f64 {
         (self.x * self.x + self.y * self.y + self.z * self.z).sqrt()
     }
 }
 
 impl Vector {
+    /// Normalizes the vector and returns the result.
     pub fn normalize(self) -> Self {
         self / self.length()
     }
+
+    /// Normalizes the vector and assigns the result.
     pub fn normalize_assign(&mut self) {
         *self /= self.length();
     }
@@ -151,6 +161,7 @@ impl DivAssign<f64> for Vector {
 }
 
 impl Vector {
+    /// Rotates the vector around a given axis and returns the result.
     pub fn rotate(self, rot_axis: Vector, angle: f64) -> Self {
         let self_quat = Quaternion::from_vector(self);
         let rot_quat = Quaternion::new_rotation(rot_axis, angle);
@@ -162,10 +173,12 @@ impl Vector {
 }
 
 impl Vector {
+    /// Calculates the dot product with another vector and returns the result.
     pub fn dot_product(self, v: Vector) -> f64 {
         self.x * v.x + self.y * v.y + self.z * v.z
     }
 
+    /// Calculates the angle to a plane given by its normal vector and returns it.
     pub fn angle_plane(self, n: Vector) -> f64 {
         (self.dot_product(n) / (self.length() * n.length())).asin()
     }
