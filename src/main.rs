@@ -2,6 +2,9 @@ use std::fmt::Debug;
 
 use minifb::{Key, Window, WindowOptions};
 
+mod complex;
+use complex::*;
+
 mod color;
 use color::{RGB, RGBA};
 

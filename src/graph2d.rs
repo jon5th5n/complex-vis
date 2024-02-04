@@ -6,20 +6,28 @@ use crate::colors::BLACK;
 use crate::drawables::{Circle, Line};
 use crate::graphing::{CoordinateStyle, FunctionStyle, Graphing, PointStyle};
 
+/// Graph2D is used to compose a 2-dimensional graph and draw it to a `Canvas`.
 pub struct Graph2D {
+    /// The width of the drawing area.
     width: usize,
+    /// The height of the drawing area.
     height: usize,
 
+    /// The margin to the sides of the x-direction given in global drawing coordinates.
     x_margin: usize,
+    /// The margin to the sides of the y-direction given in global drawing coordinates.
     y_margin: usize,
 
+    /// The x-range of the local graphing coordinates.
     x_range: Range<f64>,
+    /// The y-range of the local graphing coordinates.
     y_range: Range<f64>,
 
     drawing_buffer: Vec<Box<dyn Draw>>,
 }
 
 impl Graph2D {
+    /// Creates an empty 2-dimensional graph.
     pub fn new(
         width: usize,
         height: usize,
@@ -39,22 +47,27 @@ impl Graph2D {
         }
     }
 
+    /// Returns the width subtracting the margin from both sides.
     fn drawing_width(&self) -> usize {
         self.width - 2 * self.x_margin
     }
 
+    /// Returns the height subtracting the margin from both sides.
     fn drawing_height(&self) -> usize {
         self.height - 2 * self.y_margin
     }
 
+    /// Returns the length of the x-range
     fn x_range_len(&self) -> f64 {
         (self.x_range.end - self.x_range.start).abs()
     }
 
+    /// Returns the length of the y-range
     fn y_range_len(&self) -> f64 {
         (self.y_range.end - self.y_range.start).abs()
     }
 
+    /// Converts local graphing coordinates to global drawing coordinates.
     fn local_to_global(&self, local: (f64, f64)) -> (isize, isize) {
         let (lx, ly) = local;
 
@@ -90,6 +103,7 @@ impl Graphing for Graph2D {
         let grid = style.grid.unwrap_or(true);
         let grid_color = style.grid_color.unwrap_or(RGBA::new(0, 0, 0, 32));
         let light_grid = style.light_grid.unwrap_or(true);
+        let light_grid_density = style.light_grid_density.unwrap_or(5);
         let light_grid_color = style.light_grid_color.unwrap_or(RGBA::new(0, 0, 0, 8));
 
         let y_ax_x = if self.x_range.contains(&0.0) {
@@ -147,8 +161,8 @@ impl Graphing for Graph2D {
             }
 
             if light_grid && x_pos + tick_spacing <= x_range_max {
-                for i in 1..=4 {
-                    let x_pos = x_pos + i as f64 * (tick_spacing / 5.0);
+                for i in 1..light_grid_density {
+                    let x_pos = x_pos + i as f64 * (tick_spacing / light_grid_density as f64);
 
                     let grid_line = Line {
                         end1: self.local_to_global((x_pos, self.y_range.start)),
@@ -187,8 +201,8 @@ impl Graphing for Graph2D {
             }
 
             if light_grid && y_pos + tick_spacing <= y_range_max {
-                for i in 1..=4 {
-                    let y_pos = y_pos + i as f64 * (tick_spacing / 5.0);
+                for i in 1..light_grid_density {
+                    let y_pos = y_pos + i as f64 * (tick_spacing / light_grid_density as f64);
 
                     let grid_line = Line {
                         end1: self.local_to_global((self.x_range.start, y_pos)),

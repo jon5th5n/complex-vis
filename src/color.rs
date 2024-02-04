@@ -31,11 +31,14 @@ pub struct RGB {
 }
 
 impl RGB {
+    /// Adds an RGBA value onto a RGB value returning the result.
+    /// This simply performs a linear interpolation between the two.
     pub fn add_rgba(self, other: RGBA) -> Self {
         let (other, alpha) = other.to_rgb();
         self.lerp(&other, alpha as f64 / 255.0)
     }
 
+    /// Performs a linear interpolation between two RGB values returning the result.
     pub fn lerp(&self, other: &Self, a: f64) -> Self {
         RGB {
             r: ((1.0 - a) * self.r as f64 + a * other.r as f64) as u8,

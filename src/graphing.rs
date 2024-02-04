@@ -14,6 +14,7 @@ pub struct CoordinateStyle {
     pub grid_color: Option<RGBA>,
 
     pub light_grid: Option<bool>,
+    pub light_grid_density: Option<u32>,
     pub light_grid_color: Option<RGBA>,
 }
 
@@ -50,6 +51,11 @@ impl CoordinateStyle {
 
     pub fn light_grid(mut self, b: bool) -> Self {
         self.light_grid = Some(b);
+        self
+    }
+
+    pub fn light_grid_denisty(mut self, density: u32) -> Self {
+        self.light_grid_density = Some(density);
         self
     }
 

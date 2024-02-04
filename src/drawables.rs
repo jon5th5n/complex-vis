@@ -32,7 +32,6 @@ pub struct Circle {
 
 impl Draw for Circle {
     fn draw(&self, canvas: &mut Canvas) {
-        println!("{:?}", self);
         match self.solid {
             true => canvas.draw_circle_solid(self.center.0, self.center.1, self.radius, self.color),
             false => canvas.draw_circle(self.center.0, self.center.1, self.radius, self.color),

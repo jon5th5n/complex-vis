@@ -1,10 +1,13 @@
 use crate::color::{RGB, RGBA};
 
+/// Trait for drawing anything arbitrary onto a `Canvas`.
 pub trait Draw {
+    /// Draws onto a `Canvas`.
     fn draw(&self, canvas: &mut Canvas);
 }
 
 #[derive(Debug, Clone)]
+/// A `Canvas` is just a glorified pixel buffer with some usefull functionality.
 pub struct Canvas {
     width: usize,
     height: usize,
@@ -13,6 +16,7 @@ pub struct Canvas {
 }
 
 impl Canvas {
+    /// Creates a new black canvas.
     pub fn new(width: usize, height: usize) -> Self {
         Canvas {
             width,
@@ -23,21 +27,27 @@ impl Canvas {
 }
 
 impl Canvas {
+    /// Returns the width of the canvas.
     pub fn width(&self) -> usize {
         self.width
     }
 
+    /// Returns the height of the canvas.
     pub fn height(&self) -> usize {
         self.height
     }
 
+    /// Returns a reference to the pixel buffer of the canvas.
     pub fn buffer(&self) -> &Vec<RGB> {
         &self.buffer
     }
+
+    /// Returns a mutabel reference to the pixel buffer of the canvas.
     pub fn buffer_mut(&mut self) -> &mut Vec<RGB> {
         &mut self.buffer
     }
 
+    /// Returns the pixel buffer as a 32-bit buffer in the format `0RGB`.
     pub fn buffer_u32(&self) -> Vec<u32> {
         self.buffer
             .iter()
@@ -45,25 +55,30 @@ impl Canvas {
             .collect::<Vec<u32>>()
     }
 
+    /// Checks if the pixel specified lays inside of the canvas.
     pub fn pixel_inside(&self, x: isize, y: isize) -> bool {
         x >= 0 && x < self.width as isize && y >= 0 && y < self.height as isize
     }
 
+    /// Returns the color of the pixel at the specified position.
     pub fn get(&self, x: usize, y: usize) -> Option<&RGB> {
         self.buffer.get(y * self.width + x)
     }
 
+    /// Sets the color of the pixel at the specified position.
     pub fn set(&mut self, x: usize, y: usize, color: RGB) -> Option<()> {
         *self.buffer.get_mut(y * self.width + x)? = color;
         Some(())
     }
 
+    /// Fills the whole canvas with a given color.
     pub fn fill(&mut self, color: RGB) {
         self.buffer = vec![color; self.width * self.height];
     }
 }
 
 impl Canvas {
+    /// Draws anything arbitrary implementing the `Draw` trait onto the canvas.
     pub fn draw<T>(&mut self, drawable: &T)
     where
         T: Draw,
@@ -71,6 +86,7 @@ impl Canvas {
         drawable.draw(self);
     }
 
+    /// Draws a single pixel onto the canvas.
     pub fn draw_pixel(&mut self, x: isize, y: isize, color: RGBA) -> Option<()> {
         if !self.pixel_inside(x, y) {
             return None;
@@ -81,6 +97,7 @@ impl Canvas {
         self.set(x as usize, y as usize, new_color)
     }
 
+    /// Draws a line onto the canvas.
     pub fn draw_line(&mut self, x1: isize, y1: isize, x2: isize, y2: isize, color: RGBA) {
         if x1 == x2 {
             let (start_y, end_y) = if y1 < y2 { (y1, y2) } else { (y2, y1) };
@@ -156,6 +173,7 @@ impl Canvas {
         }
     }
 
+    /// Draws a circle onto the canvas.
     pub fn draw_circle(&mut self, x: isize, y: isize, r: usize, color: RGBA) {
         let mut e = -(r as isize);
         let mut x_offset = r as isize;
@@ -181,6 +199,7 @@ impl Canvas {
         }
     }
 
+    /// Draws a solid circle onto the canvas.
     pub fn draw_circle_solid(&mut self, x: isize, y: isize, r: usize, color: RGBA) {
         let mut e = -(r as isize);
         let mut x_offset = r as isize;
@@ -221,6 +240,7 @@ impl Canvas {
         }
     }
 
+    /// Draws a polygon onto the canvas.
     pub fn draw_polygon(&mut self, vertices: Vec<(isize, isize)>, color: RGBA) {
         if vertices.is_empty() {
             return;
@@ -237,6 +257,8 @@ impl Canvas {
         self.draw_line(x1, y1, x2, y2, color);
     }
 
+    /// Draws a solid polygon onto the canvas.
+    /// The vertices of the polygon have to be given in a clockwise order.
     pub fn draw_polygon_solid(
         &mut self,
         vertices: Vec<(isize, isize)>,
@@ -312,6 +334,7 @@ impl Canvas {
 }
 
 impl Canvas {
+    /// Computes a line for use of drawing solid polygons.
     fn polygon_buffer_line(
         buff: &mut Vec<isize>,
         right: bool,
