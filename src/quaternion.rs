@@ -1,6 +1,6 @@
 use std::ops::{Div, Mul};
 
-use crate::vector::Vector;
+use crate::vector::Vector3;
 
 #[derive(Debug, Clone, Copy)]
 /// A simple Quaternion implementation just meant for rotation of vectors.
@@ -18,7 +18,7 @@ impl Quaternion {
     }
 
     /// Creates a quaternion describing a rotation around an axis given by a vector.
-    pub fn new_rotation(rot_axis: Vector, angle: f64) -> Self {
+    pub fn new_rotation(rot_axis: Vector3, angle: f64) -> Self {
         let rot_axis = rot_axis.normalize();
 
         let sin_a = (angle / 2.0).sin();
@@ -33,7 +33,7 @@ impl Quaternion {
     }
 
     /// Creates a quaternion from a vector with its real part set to 0.
-    pub fn from_vector(v: Vector) -> Self {
+    pub fn from_vector(v: Vector3) -> Self {
         Self {
             re: 0.0,
             i: v.x,
@@ -43,8 +43,8 @@ impl Quaternion {
     }
 
     /// Turns the quaternion into a vector disregarding its real part.
-    pub fn to_vector(self) -> Vector {
-        Vector {
+    pub fn to_vector(self) -> Vector3 {
+        Vector3 {
             x: self.i,
             y: self.j,
             z: self.k,

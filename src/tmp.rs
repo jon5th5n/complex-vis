@@ -2,13 +2,13 @@ use std::f64::consts::PI;
 
 use crate::canvas::{Canvas, Draw};
 use crate::color::RGBA;
-use crate::vector::Vector;
+use crate::vector::Vector3;
 
 pub struct Camera {
-    position: Vector,
-    direction: Vector,
-    horizontal: Vector,
-    vertical: Vector,
+    position: Vector3,
+    direction: Vector3,
+    horizontal: Vector3,
+    vertical: Vector3,
 
     fov_horizontal: f64,
     fov_vertical: f64,
@@ -16,32 +16,32 @@ pub struct Camera {
 impl Camera {
     pub fn new() -> Self {
         Self {
-            position: Vector::zero(),
-            direction: Vector::unit_x(),
-            horizontal: Vector::unit_y(),
-            vertical: Vector::unit_z(),
+            position: Vector3::zero(),
+            direction: Vector3::unit_x(),
+            horizontal: Vector3::unit_y(),
+            vertical: Vector3::unit_z(),
             fov_horizontal: 1.57,
             fov_vertical: 1.57,
         }
     }
 
-    pub fn position(&self) -> Vector {
+    pub fn position(&self) -> Vector3 {
         self.position
     }
-    pub fn set_position(&mut self, pos: Vector) {
+    pub fn set_position(&mut self, pos: Vector3) {
         self.position = pos;
     }
-    pub fn r#move(&mut self, mov: Vector) {
+    pub fn r#move(&mut self, mov: Vector3) {
         self.position += mov;
     }
 
-    pub fn direction(&self) -> Vector {
+    pub fn direction(&self) -> Vector3 {
         self.direction
     }
-    pub fn horizontal(&self) -> Vector {
+    pub fn horizontal(&self) -> Vector3 {
         self.horizontal
     }
-    pub fn vertical(&self) -> Vector {
+    pub fn vertical(&self) -> Vector3 {
         self.vertical
     }
 
@@ -58,7 +58,7 @@ impl Camera {
         self.vertical = self.vertical.rotate(rot_axis, angle);
     }
 
-    pub fn point_2d_normalized(&self, v: Vector) -> (f64, f64) {
+    pub fn point_2d_normalized(&self, v: Vector3) -> (f64, f64) {
         let dir = v - self.position;
 
         let ang_hor = dir.angle_plane(self.horizontal);
@@ -100,8 +100,8 @@ where
 }
 
 pub struct Line {
-    pub start: Vector,
-    pub end: Vector,
+    pub start: Vector3,
+    pub end: Vector3,
 }
 impl Project<LineProjection> for Line {
     fn project(self, camera: &Camera, canvas: &Canvas) -> LineProjection {

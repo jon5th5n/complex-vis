@@ -175,6 +175,10 @@ impl Canvas {
 
     /// Draws a circle onto the canvas.
     pub fn draw_circle(&mut self, x: isize, y: isize, r: usize, color: RGBA) {
+        if r == 0 {
+            return;
+        }
+
         let mut e = -(r as isize);
         let mut x_offset = r as isize;
         let mut y_offset = 0isize;
@@ -201,6 +205,10 @@ impl Canvas {
 
     /// Draws a solid circle onto the canvas.
     pub fn draw_circle_solid(&mut self, x: isize, y: isize, r: usize, color: RGBA) {
+        if r == 0 {
+            return;
+        }
+
         let mut e = -(r as isize);
         let mut x_offset = r as isize;
         let mut y_offset = 0isize;

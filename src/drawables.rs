@@ -24,9 +24,9 @@ impl Draw for Line {
 #[derive(Debug)]
 pub struct Circle {
     pub center: (isize, isize),
-
     pub radius: usize,
     pub solid: bool,
+
     pub color: RGBA,
 }
 
