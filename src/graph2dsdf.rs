@@ -1,11 +1,10 @@
 use std::ops::Range;
 
-use crate::canvas::{Canvas, Draw};
-use crate::color::{RGB, RGBA};
-use crate::colors::BLACK;
 use crate::graphing::Graphing;
 use crate::sdf::{Circle2D, Line2D, LinePath2D, SDF};
 use crate::vector::Vector2;
+use drawing_stuff::canvas::{Canvas, Draw};
+use drawing_stuff::color::{BLACK, RGB, RGBA};
 
 pub struct Graph2DSDF {
     /// The width of the drawing area.

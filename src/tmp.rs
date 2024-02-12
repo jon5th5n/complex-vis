@@ -1,8 +1,8 @@
 use std::f64::consts::PI;
 
-use crate::canvas::{Canvas, Draw};
-use crate::color::RGBA;
 use crate::vector::Vector3;
+use drawing_stuff::canvas::{Canvas, Draw};
+use drawing_stuff::color::RGBA;
 
 pub struct Camera {
     position: Vector3,

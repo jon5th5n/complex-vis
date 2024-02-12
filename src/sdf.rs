@@ -1,5 +1,5 @@
-use crate::color::RGBA;
 use crate::vector::{Vector2, Vector3};
+use drawing_stuff::color::RGBA;
 
 /// Trait for objects defined by signed distance functions.
 pub trait SDF {

@@ -1,10 +1,9 @@
 use std::ops::Range;
 
-use crate::canvas::{Canvas, Draw};
-use crate::color::RGBA;
-use crate::colors::BLACK;
-use crate::drawables::{Circle, Line};
 use crate::graphing::{CoordinateStyle, FunctionStyle, Graphing, PointStyle};
+use drawing_stuff::canvas::{Canvas, Draw};
+use drawing_stuff::color::{BLACK, RGBA};
+use drawing_stuff::drawables::{Circle, Line};
 
 /// Graph2D is used to compose a 2-dimensional graph and draw it to a `Canvas`.
 pub struct Graph2D {
