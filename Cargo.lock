@@ -294,8 +294,7 @@ checksum = "9ea835d29036a4087793836fa931b08837ad5e957da9e23886b29586fb9b6650"
 [[package]]
 name = "drawing-stuff"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7db369529dbdfe6f9ebd22fadecc2652f8a306e62bd8d569f251198643e06b44"
+source = "git+https://github.com/jon5th5n/drawing-stuff.git#cd71f89626dc11d4d8aaabe8b81eb1efd3d39ddf"
 
 [[package]]
 name = "equivalent"

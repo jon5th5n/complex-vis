@@ -92,7 +92,7 @@ impl Graph2D {
 
 impl Graphing for Graph2D {
     type Point = (f64, f64);
-    type Function = fn(f64) -> f64;
+    type Function = Box<dyn Fn(f64) -> f64>;
 
     fn add_cartesian(&mut self, style: CoordinateStyle) {
         let axes_color = style.axes_color.unwrap_or(BLACK);
@@ -223,7 +223,7 @@ impl Graphing for Graph2D {
 
         let point = Circle {
             center: self.local_to_global(point),
-            radius: radius as usize,
+            radius: radius as u32,
             solid,
             color,
         };
@@ -252,6 +252,16 @@ impl Graphing for Graph2D {
         }
 
         for i in 1..samples.len() {
+            let sample_i1_outside = (samples[i - 1].0 < 0
+                || samples[i - 1].0 >= self.width as isize)
+                || (samples[i - 1].1 < 0 || samples[i - 1].1 >= self.height as isize);
+            let sample_i_putside = (samples[i].0 < 0 || samples[i].0 >= self.width as isize)
+                || (samples[i].1 < 0 || samples[i].1 >= self.height as isize);
+
+            if sample_i1_outside && sample_i_putside {
+                continue;
+            }
+
             let line = Line {
                 end1: samples[i - 1],
                 end2: samples[i],
@@ -268,5 +278,38 @@ impl Draw for Graph2D {
         for drawable in self.drawing_buffer.iter() {
             drawable.draw(canvas);
         }
+    }
+}
+
+//============================
+
+pub trait DrawPolyline {
+    fn draw_polyline(&mut self, x1: isize, y1: isize, x2: isize, y2: isize, width: u32, color: RGBA); 
+    fn draw_polyline_capped(&mut self, x1: isize, y1: isize, x2: isize, y2: isize, width: u32, color: RGBA); 
+}
+
+impl DrawPolyline for Canvas {
+    fn draw_polyline(&mut self, x1: isize, y1: isize, x2: isize, y2: isize, width: u32, color: RGBA) {
+        let dx = x2 - x1;
+        let dy = y2 - y1;
+        
+        let d_len = ((dx * dx + dy * dy) as f32).sqrt();
+        let dx_n = dx as f32 / d_len;
+        let dy_n = dy as f32 / d_len;
+
+        let v1 = (x1 - (dy_n * width as f32 / 2.0).ceil() as isize, y1 + (dx_n * width as f32).ceil() as isize); 
+        let v2 = (x1 + (dy_n * width as f32 / 2.0).ceil() as isize, y1 - (dx_n * width as f32).ceil() as isize); 
+        let v3 = (x2 + (dy_n * width as f32 / 2.0).ceil() as isize, y2 - (dx_n * width as f32).ceil() as isize); 
+        let v4 = (x2 - (dy_n * width as f32 / 2.0).ceil() as isize, y2 + (dx_n * width as f32).ceil() as isize); 
+
+        let vertices = vec![v1, v2, v3, v4];
+
+        self.draw_polygon_solid(&vertices, true, color);
+    } 
+
+    fn draw_polyline_capped(&mut self, x1: isize, y1: isize, x2: isize, y2: isize, width: u32, color: RGBA) {
+        self.draw_polyline(x1, y1, x2, y2, width, color);
+        self.draw_circle_solid(x1, y1, width, color);
+        self.draw_circle_solid(x2, y2, width, color);
     }
 }
