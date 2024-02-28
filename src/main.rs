@@ -1,5 +1,4 @@
-use std::vec;
-use std::{fmt::Debug, time::Instant};
+use std::time::Instant;
 
 use minifb::{Key, Window, WindowOptions};
 
@@ -52,24 +51,18 @@ fn main() {
         let mut graph = Graph2D::new(WIDTH, HEIGHT, 50, 50, -10.0..10.0, -10.0..10.0);
 
         let pow = counter % 10.0;
-        println!("\n{:?}\n", pow);
+        // println!("\n{:?}\n", pow);
 
-        // graph.add_cartesian(CoordinateStyle::default());
-        // graph.add_function(
-        //     Box::new(move |x| x.powf(pow)),
-        //     FunctionStyle::default().color(RED),
-        // );
+        graph.add_cartesian(CoordinateStyle::default());
+        graph.add_function(
+            Box::new(move |x| x.powf(pow)),
+            FunctionStyle::default().color(RED).thickness(2),
+        );
+        graph.add_function(Box::new(|x| x.sin()), FunctionStyle::default().color(BLUE).thickness(2));
 
         counter += 0.005;
 
         canvas.draw(&graph);
-        let x1 = 200;
-        let y1 = 500;
-
-        let x2 = 300;
-        let y2 = 400;
-
-        canvas.draw_polyline_capped(x1, y1, x2, y2, 5, RGBA { r: 0, g: 0, b: 0, a: 255 });
 
         window
             .update_with_buffer(&canvas.buffer_u32(), WIDTH, HEIGHT)

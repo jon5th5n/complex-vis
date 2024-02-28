@@ -124,6 +124,8 @@ impl Graphing for Graph2D {
         let x_ax = Line {
             end1: self.local_to_global((self.x_range.start, x_ax_y)),
             end2: self.local_to_global((self.x_range.end, x_ax_y)),
+            width: 1,
+            capped: false,
             color: axes_color,
         };
         self.drawing_buffer.push(Box::new(x_ax));
@@ -131,6 +133,8 @@ impl Graphing for Graph2D {
         let y_ax = Line {
             end1: self.local_to_global((y_ax_x, self.y_range.start)),
             end2: self.local_to_global((y_ax_x, self.y_range.end)),
+            width: 1,
+            capped: false,
             color: axes_color,
         };
         self.drawing_buffer.push(Box::new(y_ax));
@@ -146,6 +150,8 @@ impl Graphing for Graph2D {
             let tick = Line {
                 end1: (pos.0, pos.1 + (tick_size / 2.0) as isize),
                 end2: (pos.0, pos.1 - (tick_size / 2.0) as isize),
+                width: 1,
+                capped: false,
                 color: tick_color,
             };
             self.drawing_buffer.push(Box::new(tick));
@@ -154,6 +160,8 @@ impl Graphing for Graph2D {
                 let grid_line = Line {
                     end1: self.local_to_global((x_pos, self.y_range.start)),
                     end2: self.local_to_global((x_pos, self.y_range.end)),
+                    width: 1,
+                    capped: false,
                     color: grid_color,
                 };
                 self.drawing_buffer.push(Box::new(grid_line));
@@ -166,6 +174,8 @@ impl Graphing for Graph2D {
                     let grid_line = Line {
                         end1: self.local_to_global((x_pos, self.y_range.start)),
                         end2: self.local_to_global((x_pos, self.y_range.end)),
+                        width: 1,
+                        capped: false,
                         color: light_grid_color,
                     };
                     self.drawing_buffer.push(Box::new(grid_line));
@@ -186,6 +196,8 @@ impl Graphing for Graph2D {
             let tick = Line {
                 end1: (pos.0 + (tick_size / 2.0) as isize, pos.1),
                 end2: (pos.0 - (tick_size / 2.0) as isize, pos.1),
+                width: 1,
+                capped: false,
                 color: tick_color,
             };
             self.drawing_buffer.push(Box::new(tick));
@@ -194,6 +206,8 @@ impl Graphing for Graph2D {
                 let grid_line = Line {
                     end1: self.local_to_global((self.x_range.start, y_pos)),
                     end2: self.local_to_global((self.x_range.end, y_pos)),
+                    width: 1,
+                    capped: false,
                     color: grid_color,
                 };
                 self.drawing_buffer.push(Box::new(grid_line));
@@ -206,6 +220,8 @@ impl Graphing for Graph2D {
                     let grid_line = Line {
                         end1: self.local_to_global((self.x_range.start, y_pos)),
                         end2: self.local_to_global((self.x_range.end, y_pos)),
+                        width: 1,
+                        capped: false,
                         color: light_grid_color,
                     };
                     self.drawing_buffer.push(Box::new(grid_line));
@@ -233,11 +249,18 @@ impl Graphing for Graph2D {
 
     fn add_function(&mut self, function: Self::Function, style: FunctionStyle) {
         let resolution = style.resolution.unwrap_or(1000);
+        let thickness = style.thickness.unwrap_or(1);
         let color = style.color.unwrap_or(BLACK);
 
-        if resolution == 0 {
+        if resolution == 0 || thickness == 0 {
             return;
         }
+
+        let thickness = if thickness == 1 {
+            thickness
+        } else {
+            thickness + (thickness % 2)
+        };
 
         let mut samples = Vec::new();
         for i in 0..resolution {
@@ -265,6 +288,8 @@ impl Graphing for Graph2D {
             let line = Line {
                 end1: samples[i - 1],
                 end2: samples[i],
+                width: thickness,
+                capped: true,
                 color,
             };
 
@@ -278,38 +303,5 @@ impl Draw for Graph2D {
         for drawable in self.drawing_buffer.iter() {
             drawable.draw(canvas);
         }
-    }
-}
-
-//============================
-
-pub trait DrawPolyline {
-    fn draw_polyline(&mut self, x1: isize, y1: isize, x2: isize, y2: isize, width: u32, color: RGBA); 
-    fn draw_polyline_capped(&mut self, x1: isize, y1: isize, x2: isize, y2: isize, width: u32, color: RGBA); 
-}
-
-impl DrawPolyline for Canvas {
-    fn draw_polyline(&mut self, x1: isize, y1: isize, x2: isize, y2: isize, width: u32, color: RGBA) {
-        let dx = x2 - x1;
-        let dy = y2 - y1;
-        
-        let d_len = ((dx * dx + dy * dy) as f32).sqrt();
-        let dx_n = dx as f32 / d_len;
-        let dy_n = dy as f32 / d_len;
-
-        let v1 = (x1 - (dy_n * width as f32 / 2.0).ceil() as isize, y1 + (dx_n * width as f32).ceil() as isize); 
-        let v2 = (x1 + (dy_n * width as f32 / 2.0).ceil() as isize, y1 - (dx_n * width as f32).ceil() as isize); 
-        let v3 = (x2 + (dy_n * width as f32 / 2.0).ceil() as isize, y2 - (dx_n * width as f32).ceil() as isize); 
-        let v4 = (x2 - (dy_n * width as f32 / 2.0).ceil() as isize, y2 + (dx_n * width as f32).ceil() as isize); 
-
-        let vertices = vec![v1, v2, v3, v4];
-
-        self.draw_polygon_solid(&vertices, true, color);
-    } 
-
-    fn draw_polyline_capped(&mut self, x1: isize, y1: isize, x2: isize, y2: isize, width: u32, color: RGBA) {
-        self.draw_polyline(x1, y1, x2, y2, width, color);
-        self.draw_circle_solid(x1, y1, width, color);
-        self.draw_circle_solid(x2, y2, width, color);
     }
 }
