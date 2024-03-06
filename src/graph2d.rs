@@ -67,15 +67,13 @@ impl Graph2D {
     }
 
     /// Converts local graphing coordinates to global drawing coordinates.
-    fn local_to_global(&self, local: (f64, f64)) -> (isize, isize) {
+    fn local_to_global(&self, local: (f64, f64)) -> (f32, f32) {
         let (lx, ly) = local;
 
-        let gx = (((lx - self.x_range.start) / self.x_range_len()) * self.drawing_width() as f64)
-            as isize
-            + self.x_margin as isize;
-        let gy = ((-(ly - self.y_range.end) / self.y_range_len()) * self.drawing_height() as f64)
-            as isize
-            + self.y_margin as isize;
+        let gx = (((lx - self.x_range.start) / self.x_range_len()) as f32 * self.drawing_width() as f32)
+            + self.x_margin as f32;
+        let gy = ((-(ly - self.y_range.end) / self.y_range_len()) as f32 * self.drawing_height() as f32)
+            + self.y_margin as f32;
 
         (gx, gy)
     }
@@ -87,6 +85,142 @@ impl Graph2D {
             true => base * multiple,
             false => -(base * multiple),
         }
+    }
+
+    /// Clamps the specified coordinates of a line into the graphing area.
+    /// Returns (-1, -1, -1, -1) if the line is not visible.
+    fn clamp_line_coords(
+        &self,
+        x1: f32,
+        y1: f32,
+        x2: f32,
+        y2: f32,
+    ) -> (f32, f32, f32, f32) {
+        let x_min = self.x_margin as f32;
+        let y_min = self.y_margin as f32;
+        let x_max = self.width as f32 - self.x_margin as f32;
+        let y_max = self.height as f32 - self.y_margin as f32;
+
+        let p1_inside = x1 >= x_min && x1 < x_max && y1 >= y_min && y1 < y_max;
+        let p2_inside = x2 >= x_min && x2 < x_max && y2 >= y_min && y2 < y_max;
+
+        if p1_inside && p2_inside {
+            return (x1, y1, x2, y2);
+        }
+
+        let dx = x2 - x1;
+        let dy = y2 - y1;
+
+        if dx == 0.0 {
+            let s_y_min = (x1, y_min);
+            let s_y_max = (x1, y_max);
+
+            let (x1, y1) = match p1_inside {
+                true => (x1, y1),
+                false => {
+                    if y1 < y_min {
+                        s_y_min
+                    } else {
+                        s_y_max
+                    }
+                }
+            };
+            let (x2, y2) = match p2_inside {
+                true => (x2, y2),
+                false => {
+                    if y2 < y_min {
+                        s_y_min
+                    } else {
+                        s_y_max
+                    }
+                }
+            };
+
+            if x1 == x2 && y1 == y2 {
+                return (-1.0, -1.0, -1.0, -1.0);
+            }
+
+            return (x1, y1, x2, y2);
+        }
+
+        let m = dy as f32 / dx as f32;
+        let c = y1 as f32 - m * x1 as f32;
+
+        let s_x_min = (x_min as f32, c + m * x_min as f32);
+        let s_x_max = (x_max as f32, c + m * x_max as f32);
+        let s_y_min = ((y_min as f32 - c) / m, y_min as f32);
+        let s_y_max = ((y_max as f32 - c) / m, y_max as f32);
+
+        let s_x_min = match s_x_min.1 >= y_min as f32 && s_x_min.1 < y_max as f32 {
+            true => Some(s_x_min),
+            false => None,
+        };
+        let s_x_max = match s_x_max.1 >= y_min as f32 && s_x_max.1 < y_max as f32 {
+            true => Some(s_x_max),
+            false => None,
+        };
+
+        let s_y_min = match s_y_min.0 >= x_min as f32 && s_y_min.0 < x_max as f32 {
+            true => Some(s_y_min),
+            false => None,
+        };
+        let s_y_max = match s_y_max.0 >= x_min as f32 && s_y_max.0 < x_max as f32 {
+            true => Some(s_y_max),
+            false => None,
+        };
+
+        let valid_intersects = [s_x_min, s_x_max, s_y_min, s_y_max]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+
+        if valid_intersects.len() < 2 {
+            return (-1.0, -1.0, -1.0, -1.0);
+        }
+
+        let p1 = valid_intersects[0];
+        let p2 = valid_intersects[1];
+
+        let (x1, y1) = if p1_inside {
+            (x1, y1)
+        } else {
+            let dx_p1 = p1.0 - x1;
+            let dy_p1 = p1.1 - y1;
+            let sqr_dist_p1 = dx_p1 * dx_p1 + dy_p1 * dy_p1;
+
+            let dx_p2 = p2.0 - x1;
+            let dy_p2 = p2.1 - y1;
+            let sqr_dist_p2 = dx_p2 * dx_p2 + dy_p2 * dy_p2;
+
+            if sqr_dist_p1 < sqr_dist_p2 {
+                p1
+            } else {
+                p2
+            }
+        };
+        let (x2, y2) = if p2_inside {
+            (x2, y2)
+        } else {
+            let dx_p1 = p1.0 - x2;
+            let dy_p1 = p1.1 - y2;
+            let sqr_dist_p1 = dx_p1 * dx_p1 + dy_p1 * dy_p1;
+
+            let dx_p2 = p2.0 - x2;
+            let dy_p2 = p2.1 - y2;
+            let sqr_dist_p2 = dx_p2 * dx_p2 + dy_p2 * dy_p2;
+
+            if sqr_dist_p1 < sqr_dist_p2 {
+                p1
+            } else {
+                p2
+            }
+        };
+
+        if x1 == x2 && y1 == y2 {
+            return (-1.0, -1.0, -1.0, -1.0);
+        }
+
+        (x1, y1, x2, y2)
     }
 }
 
@@ -124,7 +258,8 @@ impl Graphing for Graph2D {
         let x_ax = Line {
             end1: self.local_to_global((self.x_range.start, x_ax_y)),
             end2: self.local_to_global((self.x_range.end, x_ax_y)),
-            width: 1,
+            width: 1.0,
+            anti_aliased: false,
             capped: false,
             color: axes_color,
         };
@@ -133,7 +268,8 @@ impl Graphing for Graph2D {
         let y_ax = Line {
             end1: self.local_to_global((y_ax_x, self.y_range.start)),
             end2: self.local_to_global((y_ax_x, self.y_range.end)),
-            width: 1,
+            width: 1.0,
+            anti_aliased: false,
             capped: false,
             color: axes_color,
         };
@@ -148,9 +284,10 @@ impl Graphing for Graph2D {
             let pos = self.local_to_global((x_pos, x_ax_y));
 
             let tick = Line {
-                end1: (pos.0, pos.1 + (tick_size / 2.0) as isize),
-                end2: (pos.0, pos.1 - (tick_size / 2.0) as isize),
-                width: 1,
+                end1: (pos.0, pos.1 + (tick_size as f32 / 2.0)),
+                end2: (pos.0, pos.1 - (tick_size as f32 / 2.0)),
+                width: 1.0,
+                anti_aliased: false,
                 capped: false,
                 color: tick_color,
             };
@@ -160,7 +297,8 @@ impl Graphing for Graph2D {
                 let grid_line = Line {
                     end1: self.local_to_global((x_pos, self.y_range.start)),
                     end2: self.local_to_global((x_pos, self.y_range.end)),
-                    width: 1,
+                    width: 1.0,
+                    anti_aliased: false,
                     capped: false,
                     color: grid_color,
                 };
@@ -174,7 +312,8 @@ impl Graphing for Graph2D {
                     let grid_line = Line {
                         end1: self.local_to_global((x_pos, self.y_range.start)),
                         end2: self.local_to_global((x_pos, self.y_range.end)),
-                        width: 1,
+                        width: 1.0,
+                        anti_aliased: false,
                         capped: false,
                         color: light_grid_color,
                     };
@@ -194,9 +333,10 @@ impl Graphing for Graph2D {
             let pos = self.local_to_global((y_ax_x, y_pos));
 
             let tick = Line {
-                end1: (pos.0 + (tick_size / 2.0) as isize, pos.1),
-                end2: (pos.0 - (tick_size / 2.0) as isize, pos.1),
-                width: 1,
+                end1: (pos.0 + (tick_size as f32 / 2.0), pos.1),
+                end2: (pos.0 - (tick_size as f32 / 2.0), pos.1),
+                width: 1.0,
+                anti_aliased: false,
                 capped: false,
                 color: tick_color,
             };
@@ -206,7 +346,8 @@ impl Graphing for Graph2D {
                 let grid_line = Line {
                     end1: self.local_to_global((self.x_range.start, y_pos)),
                     end2: self.local_to_global((self.x_range.end, y_pos)),
-                    width: 1,
+                    width: 1.0,
+                    anti_aliased: false,
                     capped: false,
                     color: grid_color,
                 };
@@ -220,7 +361,8 @@ impl Graphing for Graph2D {
                     let grid_line = Line {
                         end1: self.local_to_global((self.x_range.start, y_pos)),
                         end2: self.local_to_global((self.x_range.end, y_pos)),
-                        width: 1,
+                        width: 1.0,
+                        anti_aliased: false,
                         capped: false,
                         color: light_grid_color,
                     };
@@ -239,7 +381,8 @@ impl Graphing for Graph2D {
 
         let point = Circle {
             center: self.local_to_global(point),
-            radius: radius as u32,
+            radius: radius as f32,
+            anti_aliased: false,
             solid,
             color,
         };
@@ -249,17 +392,17 @@ impl Graphing for Graph2D {
 
     fn add_function(&mut self, function: Self::Function, style: FunctionStyle) {
         let resolution = style.resolution.unwrap_or(1000);
-        let thickness = style.thickness.unwrap_or(1);
+        let thickness = style.thickness.unwrap_or(1.0);
         let color = style.color.unwrap_or(BLACK);
 
-        if resolution == 0 || thickness == 0 {
+        if resolution == 0 || thickness == 0.0 {
             return;
         }
 
-        let thickness = if thickness == 1 {
+        let thickness = if thickness == 1.0 {
             thickness
         } else {
-            thickness + (thickness % 2)
+            thickness + (thickness % 2.0)
         };
 
         let mut samples = Vec::new();
@@ -275,20 +418,30 @@ impl Graphing for Graph2D {
         }
 
         for i in 1..samples.len() {
-            let sample_i1_outside = (samples[i - 1].0 < 0
-                || samples[i - 1].0 >= self.width as isize)
-                || (samples[i - 1].1 < 0 || samples[i - 1].1 >= self.height as isize);
-            let sample_i_putside = (samples[i].0 < 0 || samples[i].0 >= self.width as isize)
-                || (samples[i].1 < 0 || samples[i].1 >= self.height as isize);
+            let sample_i1_outside = (samples[i - 1].0 < 0.0
+                || samples[i - 1].0 >= self.width as f32)
+                || (samples[i - 1].1 < 0.0 || samples[i - 1].1 >= self.height as f32);
+            let sample_i_outside = (samples[i].0 < 0.0 || samples[i].0 >= self.width as f32)
+                || (samples[i].1 < 0.0 || samples[i].1 >= self.height as f32);
 
-            if sample_i1_outside && sample_i_putside {
+            if sample_i1_outside && sample_i_outside {
+                continue;
+            }
+
+            let end1 = samples[i - 1];
+            let end2 = samples[i];
+
+            let (x1, y1, x2, y2) = self.clamp_line_coords(end1.0, end1.1, end2.0, end2.1);
+
+            if x1 == -1.0 && y1 == -1.0 && y2 == -1.0 && x2 == -1.0 {
                 continue;
             }
 
             let line = Line {
-                end1: samples[i - 1],
-                end2: samples[i],
+                end1: (x1 as f32, y1 as f32),
+                end2: (x2 as f32, y2 as f32),
                 width: thickness,
+                anti_aliased: false,
                 capped: true,
                 color,
             };

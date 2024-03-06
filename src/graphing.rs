@@ -96,7 +96,7 @@ impl PointStyle {
 /// Setting the Options to None will give you the default look determined by the backend.
 pub struct FunctionStyle {
     pub resolution: Option<u32>,
-    pub thickness: Option<u32>,
+    pub thickness: Option<f32>,
     pub color: Option<RGBA>,
 }
 
@@ -106,7 +106,7 @@ impl FunctionStyle {
         self
     }
 
-    pub fn thickness(mut self, thickness: u32) -> Self {
+    pub fn thickness(mut self, thickness: f32) -> Self {
         self.thickness = Some(thickness);
         self
     }
