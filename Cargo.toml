@@ -7,7 +7,8 @@ edition = "2021"
 
 [dependencies]
 complex-stuff = "1.0.0"
-drawing-stuff = { git = "https://github.com/jon5th5n/drawing-stuff.git" }
+drawing-stuff = { path = "../drawing-stuff/" }
+# drawing-stuff = { git = "https://github.com/jon5th5n/drawing-stuff.git" }
 minifb = "0.25.0"
 
 wgpu = "0.19.1"

@@ -88,6 +88,145 @@ impl Graph2D {
             false => -(base * multiple),
         }
     }
+
+    /// Clamps the specified coordinates of a line into the graphing area.
+    /// Returns (-1, -1, -1, -1) if the line is not visible.
+    fn clamp_line_coords(
+        &self,
+        x1: isize,
+        y1: isize,
+        x2: isize,
+        y2: isize,
+    ) -> (isize, isize, isize, isize) {
+        let x_min = self.x_margin as isize;
+        let y_min = self.y_margin as isize;
+        let x_max = self.width as isize - self.x_margin as isize;
+        let y_max = self.height as isize - self.y_margin as isize;
+
+        let p1_inside = x1 >= x_min && x1 < x_max && y1 >= y_min && y1 < y_max;
+        let p2_inside = x2 >= x_min && x2 < x_max && y2 >= y_min && y2 < y_max;
+
+        if p1_inside && p2_inside {
+            return (x1, y1, x2, y2);
+        }
+
+        let dx = x2 - x1;
+        let dy = y2 - y1;
+
+        if dx == 0 {
+            let s_y_min = (x1, y_min);
+            let s_y_max = (x1, y_max);
+
+            let (x1, y1) = match p1_inside {
+                true => (x1, y1),
+                false => {
+                    if y1 < y_min {
+                        s_y_min
+                    } else {
+                        s_y_max
+                    }
+                }
+            };
+            let (x2, y2) = match p2_inside {
+                true => (x2, y2),
+                false => {
+                    if y2 < y_min {
+                        s_y_min
+                    } else {
+                        s_y_max
+                    }
+                }
+            };
+
+            if x1 == x2 && y1 == y2 {
+                return (-1, -1, -1, -1);
+            }
+
+            return (x1, y1, x2, y2);
+        }
+
+        let m = dy as f32 / dx as f32;
+        let c = y1 as f32 - m * x1 as f32;
+
+        let s_x_min = (x_min as f32, c + m * x_min as f32);
+        let s_x_max = (x_max as f32, c + m * x_max as f32);
+        let s_y_min = ((y_min as f32 - c) / m, y_min as f32);
+        let s_y_max = ((y_max as f32 - c) / m, y_max as f32);
+
+        let s_x_min = match s_x_min.1 >= y_min as f32 && s_x_min.1 < y_max as f32 {
+            true => Some(s_x_min),
+            false => None,
+        };
+        let s_x_max = match s_x_max.1 >= y_min as f32 && s_x_max.1 < y_max as f32 {
+            true => Some(s_x_max),
+            false => None,
+        };
+
+        let s_y_min = match s_y_min.0 >= x_min as f32 && s_y_min.0 < x_max as f32 {
+            true => Some(s_y_min),
+            false => None,
+        };
+        let s_y_max = match s_y_max.0 >= x_min as f32 && s_y_max.0 < x_max as f32 {
+            true => Some(s_y_max),
+            false => None,
+        };
+
+        let valid_intersects = [s_x_min, s_x_max, s_y_min, s_y_max]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+
+        if valid_intersects.len() < 2 {
+            return (-1, -1, -1, -1);
+        }
+
+        let p1 = valid_intersects[0];
+        let p2 = valid_intersects[1];
+
+        let p1 = (p1.0.round() as isize, p1.1.round() as isize);
+        let p2 = (p2.0.round() as isize, p2.1.round() as isize);
+
+        let (x1, y1) = if p1_inside {
+            (x1, y1)
+        } else {
+            let dx_p1 = p1.0 - x1;
+            let dy_p1 = p1.1 - y1;
+            let sqr_dist_p1 = dx_p1 * dx_p1 + dy_p1 * dy_p1;
+
+            let dx_p2 = p2.0 - x1;
+            let dy_p2 = p2.1 - y1;
+            let sqr_dist_p2 = dx_p2 * dx_p2 + dy_p2 * dy_p2;
+
+            if sqr_dist_p1 < sqr_dist_p2 {
+                p1
+            } else {
+                p2
+            }
+        };
+        let (x2, y2) = if p2_inside {
+            (x2, y2)
+        } else {
+            let dx_p1 = p1.0 - x2;
+            let dy_p1 = p1.1 - y2;
+            let sqr_dist_p1 = dx_p1 * dx_p1 + dy_p1 * dy_p1;
+
+            let dx_p2 = p2.0 - x2;
+            let dy_p2 = p2.1 - y2;
+            let sqr_dist_p2 = dx_p2 * dx_p2 + dy_p2 * dy_p2;
+
+            if sqr_dist_p1 < sqr_dist_p2 {
+                p1
+            } else {
+                p2
+            }
+        };
+
+        if x1 == x2 && y1 == y2 {
+            return (-1, -1, -1, -1);
+        }
+
+        (x1, y1, x2, y2)
+    }
 }
 
 impl Graphing for Graph2D {
@@ -285,9 +424,18 @@ impl Graphing for Graph2D {
                 continue;
             }
 
+            let end1 = samples[i - 1];
+            let end2 = samples[i];
+
+            let (x1, y1, x2, y2) = self.clamp_line_coords(end1.0, end1.1, end2.0, end2.1);
+
+            if x1 == -1 && y1 == -1 && y2 == -1 && x2 == -1 {
+                continue;
+            }
+
             let line = Line {
-                end1: samples[i - 1],
-                end2: samples[i],
+                end1: (x1, y1),
+                end2: (x2, y2),
                 width: thickness,
                 capped: true,
                 color,
