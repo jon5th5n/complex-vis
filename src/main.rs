@@ -55,10 +55,10 @@ fn main() {
 
         graph.add_cartesian(CoordinateStyle::default());
         graph.add_function(
-            Box::new(move |x| x.powf(pow)),
+            Box::new(move |x, y| (x * x + y * y).sqrt() - 5.0),
             FunctionStyle::default().color(RED).thickness(2),
         );
-        graph.add_function(Box::new(|x| x.sin()), FunctionStyle::default().color(BLUE).thickness(2));
+        graph.add_function(Box::new(|x, y| x.sin() - y), FunctionStyle::default().color(BLUE).thickness(2));
 
         counter += 0.005;
 

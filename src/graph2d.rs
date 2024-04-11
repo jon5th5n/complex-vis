@@ -80,6 +80,20 @@ impl Graph2D {
         (gx, gy)
     }
 
+    /// Converts global drawing coordinates to local graphing coordinates.
+    fn global_to_local(&self, global: (isize, isize)) -> (f64, f64) {
+        let (gx, gy) = global;
+
+        let lx = ((gx - self.x_margin as isize) as f64 / self.drawing_width() as f64)
+            * self.x_range_len()
+            + self.x_range.start;
+        let ly = -(((gy - self.y_margin as isize) as f64 / self.drawing_height() as f64)
+            * self.y_range_len())
+            + self.y_range.end;
+
+        (lx, ly)
+    }
+
     /// Returns the closest multiple of the base laying in the direction to 0.
     fn abs_floor_multiple(num: f64, base: f64) -> f64 {
         let multiple = (num.abs() / base.abs()).floor();
@@ -231,7 +245,7 @@ impl Graph2D {
 
 impl Graphing for Graph2D {
     type Point = (f64, f64);
-    type Function = Box<dyn Fn(f64) -> f64>;
+    type Function = Box<dyn Fn(f64, f64) -> f64>;
 
     fn add_cartesian(&mut self, style: CoordinateStyle) {
         let axes_color = style.axes_color.unwrap_or(BLACK);
@@ -401,48 +415,29 @@ impl Graphing for Graph2D {
             thickness + (thickness % 2)
         };
 
-        let mut samples = Vec::new();
-        for i in 0..resolution {
-            let current = i as f64 / (resolution - 1) as f64;
+        let mut bitmap = GraphBitmap::new(self.width, self.height, color);
 
-            let x_range_min = f64::min(self.x_range.start, self.x_range.end);
-            let x = x_range_min + current * self.x_range_len();
-
-            let y = function(x);
-
-            samples.push(self.local_to_global((x, y)));
+        for i in self.x_margin..(self.width - self.x_margin) {
+            for j in self.y_margin..(self.height - self.y_margin) {
+                let (x, y) = self.global_to_local((i as isize, j as isize));
+                let x_half_pxl = (self.global_to_local((0, 0)).0 - self.global_to_local((1, 0)).0).abs() / 2.0;
+                let y_half_pxl = (self.global_to_local((0, 0)).1 - self.global_to_local((0, 1)).1).abs() / 2.0;
+                
+                let samples = [
+                    function(x - x_half_pxl, y - y_half_pxl).signum(),
+                    function(x + x_half_pxl, y - y_half_pxl).signum(),
+                    function(x + x_half_pxl, y + y_half_pxl).signum(),
+                    function(x - x_half_pxl, y + y_half_pxl).signum(),
+                ];
+                
+                let draw = !(samples[0] == samples[1] && samples[0] == samples[2] && samples[0] == samples[3]);
+                if draw && !samples[0].is_nan() {
+                    bitmap.set(i, j, true);
+                }
+            }
         }
 
-        for i in 1..samples.len() {
-            let sample_i1_outside = (samples[i - 1].0 < 0
-                || samples[i - 1].0 >= self.width as isize)
-                || (samples[i - 1].1 < 0 || samples[i - 1].1 >= self.height as isize);
-            let sample_i_putside = (samples[i].0 < 0 || samples[i].0 >= self.width as isize)
-                || (samples[i].1 < 0 || samples[i].1 >= self.height as isize);
-
-            if sample_i1_outside && sample_i_putside {
-                continue;
-            }
-
-            let end1 = samples[i - 1];
-            let end2 = samples[i];
-
-            let (x1, y1, x2, y2) = self.clamp_line_coords(end1.0, end1.1, end2.0, end2.1);
-
-            if x1 == -1 && y1 == -1 && y2 == -1 && x2 == -1 {
-                continue;
-            }
-
-            let line = Line {
-                end1: (x1, y1),
-                end2: (x2, y2),
-                width: thickness,
-                capped: true,
-                color,
-            };
-
-            self.drawing_buffer.push(Box::new(line));
-        }
+        self.drawing_buffer.push(Box::new(bitmap));
     }
 }
 
@@ -451,5 +446,49 @@ impl Draw for Graph2D {
         for drawable in self.drawing_buffer.iter() {
             drawable.draw(canvas);
         }
+    }
+}
+
+pub struct GraphBitmap {
+    width: usize,
+    height: usize,
+    bitmap: Vec<bool>,
+
+    color: RGBA,
+}
+
+impl GraphBitmap {
+    pub fn new(width: usize, height: usize, color: RGBA) -> Self {
+        Self {
+            width,
+            height,
+            bitmap: vec![false; width * height],
+            color
+        }
+    }
+
+    pub fn get(&self, x: usize, y: usize) -> Option<&bool> {
+        self.bitmap.get(y * self.width + x)
+    }
+
+    pub fn set(&mut self, x: usize, y: usize, value: bool) -> Option<()> {
+        *self.bitmap.get_mut(y * self.width + x)? = value;
+        Some(())
+    }
+}
+
+impl Draw for GraphBitmap {
+    fn draw(&self, canvas: &mut Canvas) {
+        if self.width > canvas.width() || self.height > canvas.height() {
+            return;
+        }
+
+        for i in 0..self.width {
+            for j in 0..self.height {
+                if self.bitmap[j * self.width + i] {
+                    canvas.draw_pixel(i as isize, j as isize, self.color);
+                }
+            }
+        } 
     }
 }
