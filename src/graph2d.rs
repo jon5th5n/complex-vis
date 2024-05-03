@@ -70,9 +70,11 @@ impl Graph2D {
     fn local_to_global(&self, local: (f64, f64)) -> (f32, f32) {
         let (lx, ly) = local;
 
-        let gx = (((lx - self.x_range.start) / self.x_range_len()) as f32 * self.drawing_width() as f32)
+        let gx = (((lx - self.x_range.start) / self.x_range_len()) as f32
+            * self.drawing_width() as f32)
             + self.x_margin as f32;
-        let gy = ((-(ly - self.y_range.end) / self.y_range_len()) as f32 * self.drawing_height() as f32)
+        let gy = ((-(ly - self.y_range.end) / self.y_range_len()) as f32
+            * self.drawing_height() as f32)
             + self.y_margin as f32;
 
         (gx, gy)
@@ -89,13 +91,7 @@ impl Graph2D {
 
     /// Clamps the specified coordinates of a line into the graphing area.
     /// Returns (-1, -1, -1, -1) if the line is not visible.
-    fn clamp_line_coords(
-        &self,
-        x1: f32,
-        y1: f32,
-        x2: f32,
-        y2: f32,
-    ) -> (f32, f32, f32, f32) {
+    fn clamp_line_coords(&self, x1: f32, y1: f32, x2: f32, y2: f32) -> (f32, f32, f32, f32) {
         let x_min = self.x_margin as f32;
         let y_min = self.y_margin as f32;
         let x_max = self.width as f32 - self.x_margin as f32;
@@ -440,8 +436,8 @@ impl Graphing for Graph2D {
             let line = Line {
                 end1: (x1 as f32, y1 as f32),
                 end2: (x2 as f32, y2 as f32),
-                width: thickness,
-                anti_aliased: false,
+                width: 1.0,
+                anti_aliased: true,
                 capped: true,
                 color,
             };

@@ -1,5 +1,6 @@
 /target
 /.git
+/src_trash
 flamegraph.svg
 perf.data
 perf.data.old
