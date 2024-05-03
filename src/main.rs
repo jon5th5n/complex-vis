@@ -5,8 +5,8 @@ use minifb::{Key, Window, WindowOptions};
 use complex_stuff::*;
 
 use drawing_stuff::canvas::{Canvas, Draw};
-use drawing_stuff::color::*;
 use drawing_stuff::drawables::*;
+use drawing_stuff::rgba::*;
 
 mod graphing;
 use graphing::*;
@@ -20,8 +20,8 @@ use vector::Vector3;
 mod quaternion;
 use quaternion::Quaternion;
 
-mod tmp;
-use tmp::*;
+// mod tmp;
+// use tmp::*;
 
 const WIDTH: usize = 1000;
 const HEIGHT: usize = 1000;
@@ -42,10 +42,11 @@ fn main() {
         println!("{}", delta.as_millis());
         last_tick = now;
 
-        canvas.fill(RGB {
+        canvas.fill(RGBA {
             r: 255,
             g: 255,
             b: 255,
+            a: 255,
         });
 
         let mut graph = Graph2D::new(WIDTH, HEIGHT, 50, 50, -10.0..10.0, -10.0..10.0);
@@ -58,14 +59,26 @@ fn main() {
             Box::new(move |x, y| (x * x + y * y).sqrt() - 5.0),
             FunctionStyle::default().color(RED).thickness(2),
         );
-        graph.add_function(Box::new(|x, y| x.sin() - y), FunctionStyle::default().color(BLUE).thickness(2));
+        graph.add_function(
+            Box::new(|x, y| x.sin() - y),
+            FunctionStyle::default().color(BLUE).thickness(2),
+        );
 
         counter += 0.005;
 
         canvas.draw(&graph);
 
         window
-            .update_with_buffer(&canvas.buffer_u32(), WIDTH, HEIGHT)
+            .update_with_buffer(
+                &canvas
+                    .buffer()
+                    .into_iter()
+                    .map(|c| (c.r as u32) << 16 | (c.g as u32) << 8 | (c.b as u32))
+                    .collect::<Vec<_>>()
+                    .as_slice(),
+                WIDTH,
+                HEIGHT,
+            )
             .unwrap();
     }
 }

@@ -2,8 +2,8 @@ use std::ops::Range;
 
 use crate::graphing::{CoordinateStyle, FunctionStyle, Graphing, PointStyle};
 use drawing_stuff::canvas::{Canvas, Draw};
-use drawing_stuff::color::{BLACK, RGBA};
 use drawing_stuff::drawables::{Circle, Line};
+use drawing_stuff::rgba::{BLACK, RGBA};
 
 /// Graph2D is used to compose a 2-dimensional graph and draw it to a `Canvas`.
 pub struct Graph2D {
@@ -22,7 +22,7 @@ pub struct Graph2D {
     /// The y-range of the local graphing coordinates.
     y_range: Range<f64>,
 
-    drawing_buffer: Vec<Box<dyn Draw>>,
+    drawing_buffer: Vec<Box<dyn Draw<RGBA>>>,
 }
 
 impl Graph2D {
@@ -274,21 +274,21 @@ impl Graphing for Graph2D {
             self.y_range.end
         };
 
-        let x_ax = Line {
+        let x_ax = Line::<RGBA> {
             end1: self.local_to_global((self.x_range.start, x_ax_y)),
             end2: self.local_to_global((self.x_range.end, x_ax_y)),
             width: 1,
             capped: false,
-            color: axes_color,
+            pixel: axes_color,
         };
         self.drawing_buffer.push(Box::new(x_ax));
 
-        let y_ax = Line {
+        let y_ax = Line::<RGBA> {
             end1: self.local_to_global((y_ax_x, self.y_range.start)),
             end2: self.local_to_global((y_ax_x, self.y_range.end)),
             width: 1,
             capped: false,
-            color: axes_color,
+            pixel: axes_color,
         };
         self.drawing_buffer.push(Box::new(y_ax));
 
@@ -300,22 +300,22 @@ impl Graphing for Graph2D {
         while x_pos <= x_range_max {
             let pos = self.local_to_global((x_pos, x_ax_y));
 
-            let tick = Line {
+            let tick = Line::<RGBA> {
                 end1: (pos.0, pos.1 + (tick_size / 2.0) as isize),
                 end2: (pos.0, pos.1 - (tick_size / 2.0) as isize),
                 width: 1,
                 capped: false,
-                color: tick_color,
+                pixel: tick_color,
             };
             self.drawing_buffer.push(Box::new(tick));
 
             if grid {
-                let grid_line = Line {
+                let grid_line = Line::<RGBA> {
                     end1: self.local_to_global((x_pos, self.y_range.start)),
                     end2: self.local_to_global((x_pos, self.y_range.end)),
                     width: 1,
                     capped: false,
-                    color: grid_color,
+                    pixel: grid_color,
                 };
                 self.drawing_buffer.push(Box::new(grid_line));
             }
@@ -324,12 +324,12 @@ impl Graphing for Graph2D {
                 for i in 1..light_grid_density {
                     let x_pos = x_pos + i as f64 * (tick_spacing / light_grid_density as f64);
 
-                    let grid_line = Line {
+                    let grid_line = Line::<RGBA> {
                         end1: self.local_to_global((x_pos, self.y_range.start)),
                         end2: self.local_to_global((x_pos, self.y_range.end)),
                         width: 1,
                         capped: false,
-                        color: light_grid_color,
+                        pixel: light_grid_color,
                     };
                     self.drawing_buffer.push(Box::new(grid_line));
                 }
@@ -346,22 +346,22 @@ impl Graphing for Graph2D {
         while y_pos <= y_range_max {
             let pos = self.local_to_global((y_ax_x, y_pos));
 
-            let tick = Line {
+            let tick = Line::<RGBA> {
                 end1: (pos.0 + (tick_size / 2.0) as isize, pos.1),
                 end2: (pos.0 - (tick_size / 2.0) as isize, pos.1),
                 width: 1,
                 capped: false,
-                color: tick_color,
+                pixel: tick_color,
             };
             self.drawing_buffer.push(Box::new(tick));
 
             if grid {
-                let grid_line = Line {
+                let grid_line = Line::<RGBA> {
                     end1: self.local_to_global((self.x_range.start, y_pos)),
                     end2: self.local_to_global((self.x_range.end, y_pos)),
                     width: 1,
                     capped: false,
-                    color: grid_color,
+                    pixel: grid_color,
                 };
                 self.drawing_buffer.push(Box::new(grid_line));
             }
@@ -370,12 +370,12 @@ impl Graphing for Graph2D {
                 for i in 1..light_grid_density {
                     let y_pos = y_pos + i as f64 * (tick_spacing / light_grid_density as f64);
 
-                    let grid_line = Line {
+                    let grid_line = Line::<RGBA> {
                         end1: self.local_to_global((self.x_range.start, y_pos)),
                         end2: self.local_to_global((self.x_range.end, y_pos)),
                         width: 1,
                         capped: false,
-                        color: light_grid_color,
+                        pixel: light_grid_color,
                     };
                     self.drawing_buffer.push(Box::new(grid_line));
                 }
@@ -390,11 +390,11 @@ impl Graphing for Graph2D {
         let color = style.color.unwrap_or(BLACK);
         let radius = style.radius.unwrap_or(3.0);
 
-        let point = Circle {
+        let point = Circle::<RGBA> {
             center: self.local_to_global(point),
             radius: radius as u32,
             solid,
-            color,
+            pixel: color,
         };
 
         self.drawing_buffer.push(Box::new(point));
@@ -420,17 +420,21 @@ impl Graphing for Graph2D {
         for i in self.x_margin..(self.width - self.x_margin) {
             for j in self.y_margin..(self.height - self.y_margin) {
                 let (x, y) = self.global_to_local((i as isize, j as isize));
-                let x_half_pxl = (self.global_to_local((0, 0)).0 - self.global_to_local((1, 0)).0).abs() / 2.0;
-                let y_half_pxl = (self.global_to_local((0, 0)).1 - self.global_to_local((0, 1)).1).abs() / 2.0;
-                
+                let x_half_pxl =
+                    (self.global_to_local((0, 0)).0 - self.global_to_local((1, 0)).0).abs() / 2.0;
+                let y_half_pxl =
+                    (self.global_to_local((0, 0)).1 - self.global_to_local((0, 1)).1).abs() / 2.0;
+
                 let samples = [
                     function(x - x_half_pxl, y - y_half_pxl).signum(),
                     function(x + x_half_pxl, y - y_half_pxl).signum(),
                     function(x + x_half_pxl, y + y_half_pxl).signum(),
                     function(x - x_half_pxl, y + y_half_pxl).signum(),
                 ];
-                
-                let draw = !(samples[0] == samples[1] && samples[0] == samples[2] && samples[0] == samples[3]);
+
+                let draw = !(samples[0] == samples[1]
+                    && samples[0] == samples[2]
+                    && samples[0] == samples[3]);
                 if draw && !samples[0].is_nan() {
                     bitmap.set(i, j, true);
                 }
@@ -441,8 +445,8 @@ impl Graphing for Graph2D {
     }
 }
 
-impl Draw for Graph2D {
-    fn draw(&self, canvas: &mut Canvas) {
+impl Draw<RGBA> for Graph2D {
+    fn draw(&self, canvas: &mut Canvas<RGBA>) {
         for drawable in self.drawing_buffer.iter() {
             drawable.draw(canvas);
         }
@@ -463,7 +467,7 @@ impl GraphBitmap {
             width,
             height,
             bitmap: vec![false; width * height],
-            color
+            color,
         }
     }
 
@@ -477,8 +481,8 @@ impl GraphBitmap {
     }
 }
 
-impl Draw for GraphBitmap {
-    fn draw(&self, canvas: &mut Canvas) {
+impl Draw<RGBA> for GraphBitmap {
+    fn draw(&self, canvas: &mut Canvas<RGBA>) {
         if self.width > canvas.width() || self.height > canvas.height() {
             return;
         }
@@ -489,6 +493,6 @@ impl Draw for GraphBitmap {
                     canvas.draw_pixel(i as isize, j as isize, self.color);
                 }
             }
-        } 
+        }
     }
 }

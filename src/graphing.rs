@@ -1,4 +1,4 @@
-use drawing_stuff::color::RGBA;
+use drawing_stuff::rgba::RGBA;
 
 #[derive(Debug, Default)]
 /// Holds style settings which describe the look of a coordinate system.
