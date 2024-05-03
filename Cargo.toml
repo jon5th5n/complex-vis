@@ -9,13 +9,14 @@ edition = "2021"
 complex-stuff = "1.0.0"
 drawing-stuff = { path = "../drawing-stuff/" }
 # drawing-stuff = { git = "https://github.com/jon5th5n/drawing-stuff.git" }
-minifb = "0.25.0"
 
-wgpu = "0.19.1"
+winit = "0.29.15"
+env_logger = "0.11.3"
+log = "0.4"
+wgpu = "0.19.4"
 pollster = "0.3.0"
-bytemuck = { version = "1.14.3", features = ["derive"] }
-futures-intrusive = "0.5.0"
-backtrace-on-stack-overflow = "0.3.0"
+bytemuck = { version = "1.12", features = ["derive"] }
+anyhow = "1.0"
 
 [profile.release]
 debug = true

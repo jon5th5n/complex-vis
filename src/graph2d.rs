@@ -1,494 +1,60 @@
-use std::ops::Range;
+use std::{ops::Range, sync::Arc};
 
-use crate::graphing::{CoordinateStyle, FunctionStyle, Graphing, PointStyle};
-use drawing_stuff::canvas::{Canvas, Draw};
-use drawing_stuff::color::{BLACK, RGBA};
-use drawing_stuff::drawables::{Circle, Line};
+use crate::gpu_canvas::*;
+use drawing_stuff::{canvas::Canvas as CPUCanvas, rgba::*};
 
-/// Graph2D is used to compose a 2-dimensional graph and draw it to a `Canvas`.
 pub struct Graph2D {
-    /// The width of the drawing area.
-    width: usize,
-    /// The height of the drawing area.
-    height: usize,
+    width: u32,
+    height: u32,
 
-    /// The margin to the sides of the x-direction given in global drawing coordinates.
-    x_margin: usize,
-    /// The margin to the sides of the y-direction given in global drawing coordinates.
-    y_margin: usize,
+    gpu_canvas: GPUCanvas,
+    cpu_canvas: CPUCanvas<RGBA>,
 
-    /// The x-range of the local graphing coordinates.
-    x_range: Range<f64>,
-    /// The y-range of the local graphing coordinates.
-    y_range: Range<f64>,
+    x_margin: u32,
+    y_margin: u32,
 
-    drawing_buffer: Vec<Box<dyn Draw>>,
+    x_range: Range<f32>,
+    y_range: Range<f32>,
 }
 
 impl Graph2D {
-    /// Creates an empty 2-dimensional graph.
     pub fn new(
-        width: usize,
-        height: usize,
-        x_margin: usize,
-        y_margin: usize,
-        x_range: Range<f64>,
-        y_range: Range<f64>,
+        gpu_device: Arc<wgpu::Device>,
+        gpu_queue: Arc<wgpu::Queue>,
+
+        width: u32,
+        height: u32,
+
+        x_margin: u32,
+        y_margin: u32,
+
+        x_range: Range<f32>,
+        y_range: Range<f32>,
     ) -> Self {
+        let gpu_canvas = GPUCanvas::new(width, height, gpu_device, gpu_queue);
+        let cpu_canvas = CPUCanvas::new(width as usize, height as usize);
+
         Self {
             width,
             height,
+            gpu_canvas,
+            cpu_canvas,
             x_margin,
             y_margin,
             x_range,
             y_range,
-            drawing_buffer: Vec::new(),
         }
     }
 
-    /// Returns the width subtracting the margin from both sides.
-    fn drawing_width(&self) -> usize {
-        self.width - 2 * self.x_margin
+    pub fn resize(&mut self, new_width: u32, new_height: u32) {
+        self.width = new_width;
+        self.height = new_height;
+
+        self.gpu_canvas.resize(self.width, self.height);
+        self.cpu_canvas = CPUCanvas::new(self.width as usize, self.height as usize);
     }
 
-    /// Returns the height subtracting the margin from both sides.
-    fn drawing_height(&self) -> usize {
-        self.height - 2 * self.y_margin
-    }
-
-    /// Returns the length of the x-range
-    fn x_range_len(&self) -> f64 {
-        (self.x_range.end - self.x_range.start).abs()
-    }
-
-    /// Returns the length of the y-range
-    fn y_range_len(&self) -> f64 {
-        (self.y_range.end - self.y_range.start).abs()
-    }
-
-    /// Converts local graphing coordinates to global drawing coordinates.
-    fn local_to_global(&self, local: (f64, f64)) -> (isize, isize) {
-        let (lx, ly) = local;
-
-        let gx = (((lx - self.x_range.start) / self.x_range_len()) * self.drawing_width() as f64)
-            as isize
-            + self.x_margin as isize;
-        let gy = ((-(ly - self.y_range.end) / self.y_range_len()) * self.drawing_height() as f64)
-            as isize
-            + self.y_margin as isize;
-
-        (gx, gy)
-    }
-
-    /// Converts global drawing coordinates to local graphing coordinates.
-    fn global_to_local(&self, global: (isize, isize)) -> (f64, f64) {
-        let (gx, gy) = global;
-
-        let lx = ((gx - self.x_margin as isize) as f64 / self.drawing_width() as f64)
-            * self.x_range_len()
-            + self.x_range.start;
-        let ly = -(((gy - self.y_margin as isize) as f64 / self.drawing_height() as f64)
-            * self.y_range_len())
-            + self.y_range.end;
-
-        (lx, ly)
-    }
-
-    /// Returns the closest multiple of the base laying in the direction to 0.
-    fn abs_floor_multiple(num: f64, base: f64) -> f64 {
-        let multiple = (num.abs() / base.abs()).floor();
-        match num >= 0.0 {
-            true => base * multiple,
-            false => -(base * multiple),
-        }
-    }
-
-    /// Clamps the specified coordinates of a line into the graphing area.
-    /// Returns (-1, -1, -1, -1) if the line is not visible.
-    fn clamp_line_coords(
-        &self,
-        x1: isize,
-        y1: isize,
-        x2: isize,
-        y2: isize,
-    ) -> (isize, isize, isize, isize) {
-        let x_min = self.x_margin as isize;
-        let y_min = self.y_margin as isize;
-        let x_max = self.width as isize - self.x_margin as isize;
-        let y_max = self.height as isize - self.y_margin as isize;
-
-        let p1_inside = x1 >= x_min && x1 < x_max && y1 >= y_min && y1 < y_max;
-        let p2_inside = x2 >= x_min && x2 < x_max && y2 >= y_min && y2 < y_max;
-
-        if p1_inside && p2_inside {
-            return (x1, y1, x2, y2);
-        }
-
-        let dx = x2 - x1;
-        let dy = y2 - y1;
-
-        if dx == 0 {
-            let s_y_min = (x1, y_min);
-            let s_y_max = (x1, y_max);
-
-            let (x1, y1) = match p1_inside {
-                true => (x1, y1),
-                false => {
-                    if y1 < y_min {
-                        s_y_min
-                    } else {
-                        s_y_max
-                    }
-                }
-            };
-            let (x2, y2) = match p2_inside {
-                true => (x2, y2),
-                false => {
-                    if y2 < y_min {
-                        s_y_min
-                    } else {
-                        s_y_max
-                    }
-                }
-            };
-
-            if x1 == x2 && y1 == y2 {
-                return (-1, -1, -1, -1);
-            }
-
-            return (x1, y1, x2, y2);
-        }
-
-        let m = dy as f32 / dx as f32;
-        let c = y1 as f32 - m * x1 as f32;
-
-        let s_x_min = (x_min as f32, c + m * x_min as f32);
-        let s_x_max = (x_max as f32, c + m * x_max as f32);
-        let s_y_min = ((y_min as f32 - c) / m, y_min as f32);
-        let s_y_max = ((y_max as f32 - c) / m, y_max as f32);
-
-        let s_x_min = match s_x_min.1 >= y_min as f32 && s_x_min.1 < y_max as f32 {
-            true => Some(s_x_min),
-            false => None,
-        };
-        let s_x_max = match s_x_max.1 >= y_min as f32 && s_x_max.1 < y_max as f32 {
-            true => Some(s_x_max),
-            false => None,
-        };
-
-        let s_y_min = match s_y_min.0 >= x_min as f32 && s_y_min.0 < x_max as f32 {
-            true => Some(s_y_min),
-            false => None,
-        };
-        let s_y_max = match s_y_max.0 >= x_min as f32 && s_y_max.0 < x_max as f32 {
-            true => Some(s_y_max),
-            false => None,
-        };
-
-        let valid_intersects = [s_x_min, s_x_max, s_y_min, s_y_max]
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>();
-
-        if valid_intersects.len() < 2 {
-            return (-1, -1, -1, -1);
-        }
-
-        let p1 = valid_intersects[0];
-        let p2 = valid_intersects[1];
-
-        let p1 = (p1.0.round() as isize, p1.1.round() as isize);
-        let p2 = (p2.0.round() as isize, p2.1.round() as isize);
-
-        let (x1, y1) = if p1_inside {
-            (x1, y1)
-        } else {
-            let dx_p1 = p1.0 - x1;
-            let dy_p1 = p1.1 - y1;
-            let sqr_dist_p1 = dx_p1 * dx_p1 + dy_p1 * dy_p1;
-
-            let dx_p2 = p2.0 - x1;
-            let dy_p2 = p2.1 - y1;
-            let sqr_dist_p2 = dx_p2 * dx_p2 + dy_p2 * dy_p2;
-
-            if sqr_dist_p1 < sqr_dist_p2 {
-                p1
-            } else {
-                p2
-            }
-        };
-        let (x2, y2) = if p2_inside {
-            (x2, y2)
-        } else {
-            let dx_p1 = p1.0 - x2;
-            let dy_p1 = p1.1 - y2;
-            let sqr_dist_p1 = dx_p1 * dx_p1 + dy_p1 * dy_p1;
-
-            let dx_p2 = p2.0 - x2;
-            let dy_p2 = p2.1 - y2;
-            let sqr_dist_p2 = dx_p2 * dx_p2 + dy_p2 * dy_p2;
-
-            if sqr_dist_p1 < sqr_dist_p2 {
-                p1
-            } else {
-                p2
-            }
-        };
-
-        if x1 == x2 && y1 == y2 {
-            return (-1, -1, -1, -1);
-        }
-
-        (x1, y1, x2, y2)
-    }
-}
-
-impl Graphing for Graph2D {
-    type Point = (f64, f64);
-    type Function = Box<dyn Fn(f64, f64) -> f64>;
-
-    fn add_cartesian(&mut self, style: CoordinateStyle) {
-        let axes_color = style.axes_color.unwrap_or(BLACK);
-        let tick_spacing = style.tick_spacing.unwrap_or(1.0).abs();
-        let tick_size = style.tick_size.unwrap_or(10.0);
-        let tick_color = style.tick_color.unwrap_or(BLACK);
-        let grid = style.grid.unwrap_or(true);
-        let grid_color = style.grid_color.unwrap_or(RGBA::new(0, 0, 0, 32));
-        let light_grid = style.light_grid.unwrap_or(true);
-        let light_grid_density = style.light_grid_density.unwrap_or(5);
-        let light_grid_color = style.light_grid_color.unwrap_or(RGBA::new(0, 0, 0, 8));
-
-        let y_ax_x = if self.x_range.contains(&0.0) {
-            0.0
-        } else if self.x_range.start.abs() < self.x_range.end.abs() {
-            self.x_range.start
-        } else {
-            self.x_range.end
-        };
-
-        let x_ax_y = if self.y_range.contains(&0.0) {
-            0.0
-        } else if self.y_range.start.abs() < self.y_range.end.abs() {
-            self.y_range.start
-        } else {
-            self.y_range.end
-        };
-
-        let x_ax = Line {
-            end1: self.local_to_global((self.x_range.start, x_ax_y)),
-            end2: self.local_to_global((self.x_range.end, x_ax_y)),
-            width: 1,
-            capped: false,
-            color: axes_color,
-        };
-        self.drawing_buffer.push(Box::new(x_ax));
-
-        let y_ax = Line {
-            end1: self.local_to_global((y_ax_x, self.y_range.start)),
-            end2: self.local_to_global((y_ax_x, self.y_range.end)),
-            width: 1,
-            capped: false,
-            color: axes_color,
-        };
-        self.drawing_buffer.push(Box::new(y_ax));
-
-        let x_range_min = f64::min(self.x_range.start, self.x_range.end);
-        let x_range_max = f64::max(self.x_range.start, self.x_range.end);
-        let x_ticks_start = Self::abs_floor_multiple(x_range_min, tick_spacing);
-
-        let mut x_pos = x_ticks_start;
-        while x_pos <= x_range_max {
-            let pos = self.local_to_global((x_pos, x_ax_y));
-
-            let tick = Line {
-                end1: (pos.0, pos.1 + (tick_size / 2.0) as isize),
-                end2: (pos.0, pos.1 - (tick_size / 2.0) as isize),
-                width: 1,
-                capped: false,
-                color: tick_color,
-            };
-            self.drawing_buffer.push(Box::new(tick));
-
-            if grid {
-                let grid_line = Line {
-                    end1: self.local_to_global((x_pos, self.y_range.start)),
-                    end2: self.local_to_global((x_pos, self.y_range.end)),
-                    width: 1,
-                    capped: false,
-                    color: grid_color,
-                };
-                self.drawing_buffer.push(Box::new(grid_line));
-            }
-
-            if light_grid && x_pos + tick_spacing <= x_range_max {
-                for i in 1..light_grid_density {
-                    let x_pos = x_pos + i as f64 * (tick_spacing / light_grid_density as f64);
-
-                    let grid_line = Line {
-                        end1: self.local_to_global((x_pos, self.y_range.start)),
-                        end2: self.local_to_global((x_pos, self.y_range.end)),
-                        width: 1,
-                        capped: false,
-                        color: light_grid_color,
-                    };
-                    self.drawing_buffer.push(Box::new(grid_line));
-                }
-            }
-
-            x_pos += tick_spacing;
-        }
-
-        let y_range_min = f64::min(self.y_range.start, self.y_range.end);
-        let y_range_max = f64::max(self.y_range.start, self.y_range.end);
-        let y_ticks_start = Self::abs_floor_multiple(y_range_min, tick_spacing);
-
-        let mut y_pos = y_ticks_start;
-        while y_pos <= y_range_max {
-            let pos = self.local_to_global((y_ax_x, y_pos));
-
-            let tick = Line {
-                end1: (pos.0 + (tick_size / 2.0) as isize, pos.1),
-                end2: (pos.0 - (tick_size / 2.0) as isize, pos.1),
-                width: 1,
-                capped: false,
-                color: tick_color,
-            };
-            self.drawing_buffer.push(Box::new(tick));
-
-            if grid {
-                let grid_line = Line {
-                    end1: self.local_to_global((self.x_range.start, y_pos)),
-                    end2: self.local_to_global((self.x_range.end, y_pos)),
-                    width: 1,
-                    capped: false,
-                    color: grid_color,
-                };
-                self.drawing_buffer.push(Box::new(grid_line));
-            }
-
-            if light_grid && y_pos + tick_spacing <= y_range_max {
-                for i in 1..light_grid_density {
-                    let y_pos = y_pos + i as f64 * (tick_spacing / light_grid_density as f64);
-
-                    let grid_line = Line {
-                        end1: self.local_to_global((self.x_range.start, y_pos)),
-                        end2: self.local_to_global((self.x_range.end, y_pos)),
-                        width: 1,
-                        capped: false,
-                        color: light_grid_color,
-                    };
-                    self.drawing_buffer.push(Box::new(grid_line));
-                }
-            }
-
-            y_pos += tick_spacing;
-        }
-    }
-
-    fn add_point(&mut self, point: Self::Point, style: PointStyle) {
-        let solid = style.solid.unwrap_or(true);
-        let color = style.color.unwrap_or(BLACK);
-        let radius = style.radius.unwrap_or(3.0);
-
-        let point = Circle {
-            center: self.local_to_global(point),
-            radius: radius as u32,
-            solid,
-            color,
-        };
-
-        self.drawing_buffer.push(Box::new(point));
-    }
-
-    fn add_function(&mut self, function: Self::Function, style: FunctionStyle) {
-        let resolution = style.resolution.unwrap_or(1000);
-        let thickness = style.thickness.unwrap_or(1);
-        let color = style.color.unwrap_or(BLACK);
-
-        if resolution == 0 || thickness == 0 {
-            return;
-        }
-
-        let thickness = if thickness == 1 {
-            thickness
-        } else {
-            thickness + (thickness % 2)
-        };
-
-        let mut bitmap = GraphBitmap::new(self.width, self.height, color);
-
-        for i in self.x_margin..(self.width - self.x_margin) {
-            for j in self.y_margin..(self.height - self.y_margin) {
-                let (x, y) = self.global_to_local((i as isize, j as isize));
-                let x_half_pxl = (self.global_to_local((0, 0)).0 - self.global_to_local((1, 0)).0).abs() / 2.0;
-                let y_half_pxl = (self.global_to_local((0, 0)).1 - self.global_to_local((0, 1)).1).abs() / 2.0;
-                
-                let samples = [
-                    function(x - x_half_pxl, y - y_half_pxl).signum(),
-                    function(x + x_half_pxl, y - y_half_pxl).signum(),
-                    function(x + x_half_pxl, y + y_half_pxl).signum(),
-                    function(x - x_half_pxl, y + y_half_pxl).signum(),
-                ];
-                
-                let draw = !(samples[0] == samples[1] && samples[0] == samples[2] && samples[0] == samples[3]);
-                if draw && !samples[0].is_nan() {
-                    bitmap.set(i, j, true);
-                }
-            }
-        }
-
-        self.drawing_buffer.push(Box::new(bitmap));
-    }
-}
-
-impl Draw for Graph2D {
-    fn draw(&self, canvas: &mut Canvas) {
-        for drawable in self.drawing_buffer.iter() {
-            drawable.draw(canvas);
-        }
-    }
-}
-
-pub struct GraphBitmap {
-    width: usize,
-    height: usize,
-    bitmap: Vec<bool>,
-
-    color: RGBA,
-}
-
-impl GraphBitmap {
-    pub fn new(width: usize, height: usize, color: RGBA) -> Self {
-        Self {
-            width,
-            height,
-            bitmap: vec![false; width * height],
-            color
-        }
-    }
-
-    pub fn get(&self, x: usize, y: usize) -> Option<&bool> {
-        self.bitmap.get(y * self.width + x)
-    }
-
-    pub fn set(&mut self, x: usize, y: usize, value: bool) -> Option<()> {
-        *self.bitmap.get_mut(y * self.width + x)? = value;
-        Some(())
-    }
-}
-
-impl Draw for GraphBitmap {
-    fn draw(&self, canvas: &mut Canvas) {
-        if self.width > canvas.width() || self.height > canvas.height() {
-            return;
-        }
-
-        for i in 0..self.width {
-            for j in 0..self.height {
-                if self.bitmap[j * self.width + i] {
-                    canvas.draw_pixel(i as isize, j as isize, self.color);
-                }
-            }
-        } 
+    pub fn build(&self) -> &wgpu::Texture {
+        self.gpu_canvas.texture()
     }
 }
