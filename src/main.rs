@@ -1,9 +1,14 @@
 mod gpuview;
 use gpuview::*;
-use wgpu_text::glyph_brush::{Section, Text};
 
-use std::borrow::Borrow;
-use std::cell::RefCell;
+mod gpucanvas_2d;
+use gpucanvas_2d::*;
+
+use wgpu_text::glyph_brush::{Section, Text};
+use winit::dpi::PhysicalPosition;
+
+use core::cell::RefCell;
+use std::borrow::{Borrow, BorrowMut};
 use std::ops::Range;
 use std::sync::Arc;
 
@@ -15,166 +20,91 @@ use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
 
-struct ExampleShaderDesc {
-    offset: [f32; 3],
+// struct ExampleShaderDesc {
+//     offset: [f32; 3],
 
-    buffer: Option<wgpu::Buffer>,
+//     buffer: Option<wgpu::Buffer>,
 
-    is_initialized: bool,
-    offset_changed: bool,
-}
+//     is_initialized: bool,
+//     offset_changed: bool,
+// }
 
-impl ExampleShaderDesc {
-    pub fn new(offset: [f32; 3]) -> Self {
-        Self {
-            offset,
-            buffer: None,
-            is_initialized: false,
-            offset_changed: false,
-        }
-    }
+// impl ExampleShaderDesc {
+//     pub fn new(offset: [f32; 3]) -> Self {
+//         Self {
+//             offset,
+//             buffer: None,
+//             is_initialized: false,
+//             offset_changed: false,
+//         }
+//     }
 
-    pub fn set_offset(&mut self, offset: [f32; 3]) {
-        self.offset = offset;
-        self.offset_changed = true;
-    }
+//     pub fn set_offset(&mut self, offset: [f32; 3]) {
+//         self.offset = offset;
+//         self.offset_changed = true;
+//     }
 
-    pub fn into_arc_ref_cell(self) -> Arc<RefCell<Self>> {
-        Arc::new(RefCell::new(self))
-    }
-}
+//     pub fn into_arc_ref_cell(self) -> Arc<RefCell<Self>> {
+//         Arc::new(RefCell::new(self))
+//     }
+// }
 
-impl ShaderDescriptor for ExampleShaderDesc {
-    fn initialize(&mut self, device: &wgpu::Device) {
-        let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Shader Descriptor Buffer"),
-            contents: bytemuck::bytes_of(&self.offset),
-            usage: wgpu::BufferUsages::UNIFORM,
-        });
+// impl ShaderDescriptor for ExampleShaderDesc {
+//     fn initialize(&mut self, device: &wgpu::Device) {
+//         let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+//             label: Some("Shader Descriptor Buffer"),
+//             contents: bytemuck::bytes_of(&self.offset),
+//             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+//         });
 
-        self.buffer = Some(buffer);
-        self.is_initialized = true;
-    }
+//         self.buffer = Some(buffer);
+//         self.is_initialized = true;
+//     }
 
-    fn update_buffers(&self, queue: &wgpu::Queue) {
-        if self.offset_changed {
-            queue.write_buffer(
-                self.buffer.as_ref().unwrap(),
-                0,
-                bytemuck::bytes_of(&self.offset),
-            )
-        }
-    }
+//     fn update_buffers(&self, queue: &wgpu::Queue) {
+//         if self.offset_changed {
+//             queue.write_buffer(
+//                 self.buffer.as_ref().unwrap(),
+//                 0,
+//                 bytemuck::bytes_of(&self.offset),
+//             )
+//         }
+//     }
 
-    fn shader_source(&self) -> wgpu::ShaderSource {
-        wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into())
-    }
+//     fn shader_source(&self) -> wgpu::ShaderSource {
+//         wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into())
+//     }
 
-    fn bind_group_and_layout(
-        &self,
-        device: &wgpu::Device,
-    ) -> (wgpu::BindGroup, wgpu::BindGroupLayout) {
-        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Shader Descripot Bind Group Layout"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-        });
+//     fn bind_group_and_layout(
+//         &self,
+//         device: &wgpu::Device,
+//     ) -> (wgpu::BindGroup, wgpu::BindGroupLayout) {
+//         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+//             label: Some("Shader Descripot Bind Group Layout"),
+//             entries: &[wgpu::BindGroupLayoutEntry {
+//                 binding: 0,
+//                 visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+//                 ty: wgpu::BindingType::Buffer {
+//                     ty: wgpu::BufferBindingType::Uniform,
+//                     has_dynamic_offset: false,
+//                     min_binding_size: None,
+//                 },
+//                 count: None,
+//             }],
+//         });
 
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Shader Descriptor Bind Group"),
-            layout: &bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: self.buffer.as_ref().unwrap().as_entire_binding(),
-            }],
-        });
+//         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+//             label: Some("Shader Descriptor Bind Group"),
+//             layout: &bind_group_layout,
+//             entries: &[wgpu::BindGroupEntry {
+//                 binding: 0,
+//                 resource: self.buffer.as_ref().unwrap().as_entire_binding(),
+//             }],
+//         });
 
-        (bind_group, bind_group_layout)
-    }
-}
-
-struct GPUCanvas2DShaderDescriptor {}
-
-impl GPUCanvas2DShaderDescriptor {
-    fn new() -> Self {
-        Self {}
-    }
-
-    fn into_arc_ref_cell(self) -> Arc<RefCell<Self>> {
-        Arc::new(RefCell::new(self))
-    }
-}
-
-impl ShaderDescriptor for GPUCanvas2DShaderDescriptor {
-    fn initialize(&mut self, device: &wgpu::Device) {
-        return;
-    }
-
-    fn update_buffers(&self, queue: &wgpu::Queue) {
-        return;
-    }
-
-    fn shader_source(&self) -> wgpu::ShaderSource {
-        wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into())
-    }
-
-    fn bind_group_and_layout(
-        &self,
-        device: &wgpu::Device,
-    ) -> (wgpu::BindGroup, wgpu::BindGroupLayout) {
-        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Shader Descripot Bind Group Layout"),
-            entries: &[],
-        });
-
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Shader Descriptor Bind Group"),
-            layout: &bind_group_layout,
-            entries: &[],
-        });
-
-        (bind_group, bind_group_layout)
-    }
-}
-
-pub struct GPUCanvas2D<'a> {
-    width: u32,
-    height: u32,
-
-    x_margin: f32,
-    y_margin: f32,
-
-    x_range: Range<f32>,
-    y_range: Range<f32>,
-
-    shader_descriptor: Arc<RefCell<GPUCanvas2DShaderDescriptor>>,
-    view: Arc<RefCell<GPUView<'a>>>,
-}
-
-impl GPUCanvas2D<'_> {
-    pub fn new(width: u32, height: u32, x_margin: f32, y_margin: f32) -> Self {
-        let shader_descriptor = GPUCanvas2DShaderDescriptor::new().into_arc_ref_cell();
-
-        Self {
-            width,
-            height,
-            x_margin,
-            y_margin,
-            x_range: -1.0..1.0,
-            y_range: -1.0..1.0,
-            shader_descriptor: shader_descriptor.clone(),
-            view: GPUView::new(width, height, shader_descriptor, todo!()).into_arc_ref_cell(),
-        }
-    }
-}
+//         (bind_group, bind_group_layout)
+//     }
+// }
 
 struct App<'a> {
     window: Option<Arc<Window>>,
@@ -183,6 +113,9 @@ struct App<'a> {
     queue: Option<Arc<wgpu::Queue>>,
 
     multiview: GPUMultiView<'a>,
+    canvas: GPUCanvas2D<'a>,
+
+    mouse_pos: PhysicalPosition<f64>,
 
     prev_t: std::time::Instant,
     delta_t: std::time::Duration,
@@ -195,6 +128,8 @@ impl<'a> App<'a> {
             device: None,
             queue: None,
             multiview: GPUMultiView::new(),
+            canvas: GPUCanvas2D::new(GPUViewFrame::Whole),
+            mouse_pos: PhysicalPosition { x: 0.0, y: 0.0 },
             prev_t: std::time::Instant::now(),
             delta_t: std::time::Duration::ZERO,
         }
@@ -279,111 +214,12 @@ impl ApplicationHandler for App<'_> {
         .block_on()
         .unwrap();
 
-        let shader_desc = ExampleShaderDesc::new([-0.5, 0.5, 0.0]).into_arc_ref_cell();
+        self.canvas.set_clear_color(wgpu::Color::WHITE);
+        self.canvas.add_function(|x| x.powi(2));
 
-        let width = self.multiview.width().unwrap();
-        let height = self.multiview.height().unwrap();
+        let canvas_view = self.canvas.get_view();
 
-        let multi_section = Arc::new(RefCell::new(
-            Section::builder()
-                .add_text(
-                    Text::new("Multiview")
-                        .with_scale(96.0)
-                        .with_color([0.0, 1.0, 0.0, 1.0]),
-                )
-                .with_screen_position((10.0, height as f32 / 1.5))
-                .to_owned(),
-        ));
-
-        let multi_text = TextPrimitive::new(
-            include_bytes!("../fonts/JetBrainsMono-Italic.ttf"),
-            vec![multi_section],
-        );
-
-        self.multiview.set_text_primitives(vec![multi_text]);
-
-        let mut render_verts = Vec::new();
-        vertices_add_line(
-            &mut render_verts,
-            [-1.0, 1.0],
-            [1.0, 0.0],
-            0.05,
-            [0.0, 0.0, 1.0, 1.0],
-        );
-
-        let section11 = Arc::new(RefCell::new(
-            Section::builder()
-                .add_text(
-                    Text::new("Hello, world.\nHere is section1!")
-                        .with_scale(26.0)
-                        .with_color([0.8, 0.2, 0.5, 1.0]),
-                )
-                .with_screen_position((width as f32 / 2.0, height as f32 / 2.0))
-                .to_owned(),
-        ));
-
-        let section12 = Arc::new(RefCell::new(
-            Section::builder()
-                .add_text(
-                    Text::new("Bye, world.\nHere is section2!")
-                        .with_scale(50.0)
-                        .with_color([0.1, 0.7, 1.0, 1.0]),
-                )
-                .with_screen_position((width as f32 / 10.0, height as f32 / 1.5))
-                .to_owned(),
-        ));
-
-        let text1 = TextPrimitive::new(
-            include_bytes!("../fonts/JetBrainsMono-Regular.ttf"),
-            vec![section11, section12],
-        );
-
-        let section21 = Arc::new(RefCell::new(
-            Section::builder()
-                .add_text(
-                    Text::new("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
-                        .with_scale(10.0)
-                        .with_color([0.0, 0.0, 0.0, 1.0]),
-                )
-                .with_screen_position((width as f32 / 20.0, 10.0))
-                .to_owned(),
-        ));
-
-        let section22 = Arc::new(RefCell::new(
-            Section::builder()
-                .add_text(
-                    Text::new("123456789")
-                        .with_scale(14.0)
-                        .with_color([0.0, 0.0, 0.0, 1.0]),
-                )
-                .with_screen_position((width as f32 / 20.0, 30.0))
-                .to_owned(),
-        ));
-
-        let text2 = TextPrimitive::new(
-            include_bytes!("../fonts/JetBrainsMono-Bold.ttf"),
-            vec![section21, section22],
-        );
-
-        let mut view1 =
-            GPUView::new_rect_frame(width, height, shader_desc.clone(), [-1.0, 1.0], [0.0, -0.0]);
-
-        view1.set_clear_color(wgpu::Color::WHITE);
-
-        view1.set_render_vertices(render_verts);
-
-        view1.set_text_primitives(vec![text1, text2]);
-
-        let view1 = view1.into_arc_ref_cell();
-
-        let mut view2 =
-            GPUView::new_rect_frame(width, height, shader_desc.clone(), [-0.0, 0.0], [1.0, -1.0]);
-
-        view2.set_clear_color(wgpu::Color::RED);
-
-        let view2 = view2.into_arc_ref_cell();
-
-        self.multiview.set_render_views(vec![view1, view2]);
+        self.multiview.set_render_views(vec![canvas_view]);
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
@@ -394,7 +230,7 @@ impl ApplicationHandler for App<'_> {
             }
             WindowEvent::Resized(new_size) => {
                 // println!("{:?}", WindowEvent::Resized(new_size));
-                self.multiview.resize(
+                let _ = self.multiview.resize(
                     new_size.width,
                     new_size.height,
                     self.device.as_ref().unwrap(),
@@ -407,7 +243,11 @@ impl ApplicationHandler for App<'_> {
 
                 println!("{:?}", self.delta_t.as_millis());
 
-                self.multiview
+                let x = self.mouse_pos.x as f32 / self.multiview.width().unwrap() as f32;
+                let y = self.mouse_pos.y as f32 / self.multiview.height().unwrap() as f32;
+
+                let _ = self
+                    .multiview
                     .render(self.device.as_ref().unwrap(), self.queue.as_ref().unwrap());
 
                 self.window.as_ref().unwrap().request_redraw();
@@ -420,6 +260,9 @@ impl ApplicationHandler for App<'_> {
                 }
                 _ => (),
             },
+            WindowEvent::CursorMoved { position, .. } => {
+                self.mouse_pos = position;
+            }
             _ => (),
         }
     }
@@ -439,61 +282,4 @@ fn main() {
     let mut app = App::new();
 
     let _ = event_loop.run_app(&mut app);
-}
-
-fn vertices_add_line(
-    vertices: &mut Vec<Vertex>,
-    end1: [f32; 2],
-    end2: [f32; 2],
-    width: f32,
-    color: [f32; 4],
-) {
-    let normal = [end2[1] - end1[1], -(end2[0] - end1[0])];
-    let normal_len = (normal[0] * normal[0] + normal[1] * normal[1]).sqrt();
-    let normal_norm = [normal[0] / normal_len, normal[1] / normal_len];
-    let normal_width = [normal_norm[0] * width, normal_norm[1] * width];
-
-    let corner11 = [
-        end1[0] + normal_width[0] / 2.0,
-        end1[1] + normal_width[1] / 2.0,
-    ];
-    let corner12 = [
-        end1[0] - normal_width[0] / 2.0,
-        end1[1] - normal_width[1] / 2.0,
-    ];
-    let corner21 = [
-        end2[0] + normal_width[0] / 2.0,
-        end2[1] + normal_width[1] / 2.0,
-    ];
-    let corner22 = [
-        end2[0] - normal_width[0] / 2.0,
-        end2[1] - normal_width[1] / 2.0,
-    ];
-
-    vertices.append(&mut vec![
-        Vertex {
-            position: [corner11[0], corner11[1], 0.0],
-            color,
-        },
-        Vertex {
-            position: [corner12[0], corner12[1], 0.0],
-            color,
-        },
-        Vertex {
-            position: [corner21[0], corner21[1], 0.0],
-            color,
-        },
-        Vertex {
-            position: [corner12[0], corner12[1], 0.0],
-            color,
-        },
-        Vertex {
-            position: [corner21[0], corner21[1], 0.0],
-            color,
-        },
-        Vertex {
-            position: [corner22[0], corner22[1], 0.0],
-            color,
-        },
-    ]);
 }

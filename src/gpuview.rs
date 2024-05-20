@@ -2,10 +2,7 @@ use anyhow::Context;
 use std::{cell::RefCell, sync::Arc};
 use wgpu::util::DeviceExt;
 use wgpu_text::{
-    glyph_brush::{
-        ab_glyph::{FontRef, FontVec},
-        Layout, OwnedSection, Section, SectionBuilder, Text,
-    },
+    glyph_brush::{ab_glyph::FontRef, OwnedSection},
     BrushBuilder, TextBrush,
 };
 
@@ -38,7 +35,7 @@ impl Vertex {
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct FrameVertex {
+struct FrameVertex {
     pub position: [f32; 2],
     pub tex_coords: [f32; 2],
 }
@@ -54,18 +51,146 @@ impl FrameVertex {
                     format: wgpu::VertexFormat::Float32x2,
                 },
                 wgpu::VertexAttribute {
-                    offset: std::mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
+                    offset: std::mem::size_of::<[f32; 2]>() as u64,
                     shader_location: 1,
                     format: wgpu::VertexFormat::Float32x2,
                 },
             ],
         }
     }
+
+    fn vertices_from_rect(upper_left: (f32, f32), lower_right: (f32, f32)) -> Vec<FrameVertex> {
+        vec![
+            FrameVertex {
+                // A
+                position: [upper_left.0, upper_left.1],
+                tex_coords: [0.0, 0.0],
+            },
+            FrameVertex {
+                // B
+                position: [upper_left.0, lower_right.1],
+                tex_coords: [0.0, 1.0],
+            },
+            FrameVertex {
+                // C
+                position: [lower_right.0, lower_right.1],
+                tex_coords: [1.0, 1.0],
+            },
+            FrameVertex {
+                // A
+                position: [upper_left.0, upper_left.1],
+                tex_coords: [0.0, 0.0],
+            },
+            FrameVertex {
+                // C
+                position: [lower_right.0, lower_right.1],
+                tex_coords: [1.0, 1.0],
+            },
+            FrameVertex {
+                // D
+                position: [lower_right.0, upper_left.1],
+                tex_coords: [1.0, 0.0],
+            },
+        ]
+    }
+}
+
+pub enum GPUViewFrame {
+    Whole,
+    UpperLeftQuad,
+    UpperRightQuad,
+    LowerLeftQuad,
+    LowerRightQuad,
+    Custom {
+        upper_left: (f32, f32),
+        lower_right: (f32, f32),
+    },
+}
+
+impl GPUViewFrame {
+    // 0---1---2
+    // |   |   |
+    // 3---4---5
+    // |   |   |
+    // 6---7---8
+    const QUAD_VERTS_POS: [(f32, f32); 9] = [
+        (-1.0, 1.0),  // 0
+        (0.0, 1.0),   // 1
+        (1.0, 1.0),   // 2
+        (-1.0, 0.0),  // 3
+        (0.0, 0.0),   // 4
+        (1.0, 0.0),   // 5
+        (-1.0, -1.0), // 6
+        (0.0, -1.0),  // 7
+        (1.0, -1.0),  // 8
+    ];
+
+    fn frame_vertices(&self) -> Vec<FrameVertex> {
+        match self {
+            GPUViewFrame::Whole => {
+                FrameVertex::vertices_from_rect(Self::QUAD_VERTS_POS[0], Self::QUAD_VERTS_POS[8])
+            }
+            GPUViewFrame::UpperLeftQuad => {
+                FrameVertex::vertices_from_rect(Self::QUAD_VERTS_POS[0], Self::QUAD_VERTS_POS[4])
+            }
+            GPUViewFrame::UpperRightQuad => {
+                FrameVertex::vertices_from_rect(Self::QUAD_VERTS_POS[1], Self::QUAD_VERTS_POS[5])
+            }
+            GPUViewFrame::LowerLeftQuad => {
+                FrameVertex::vertices_from_rect(Self::QUAD_VERTS_POS[3], Self::QUAD_VERTS_POS[7])
+            }
+            GPUViewFrame::LowerRightQuad => {
+                FrameVertex::vertices_from_rect(Self::QUAD_VERTS_POS[4], Self::QUAD_VERTS_POS[8])
+            }
+            GPUViewFrame::Custom {
+                upper_left,
+                lower_right,
+            } => FrameVertex::vertices_from_rect(*upper_left, *lower_right),
+        }
+    }
+
+    fn relative_dimensions(&self) -> (f32, f32) {
+        match self {
+            GPUViewFrame::Whole => (1.0, 1.0),
+            GPUViewFrame::UpperLeftQuad => (0.5, 0.5),
+            GPUViewFrame::UpperRightQuad => (0.5, 0.5),
+            GPUViewFrame::LowerLeftQuad => (0.5, 0.5),
+            GPUViewFrame::LowerRightQuad => (0.5, 0.5),
+            GPUViewFrame::Custom {
+                upper_left,
+                lower_right,
+            } => (lower_right.0 - upper_left.0, upper_left.1 - lower_right.1),
+        }
+    }
+}
+
+pub enum TextSection {
+    Absolute(OwnedSection),
+    Relative(OwnedSection),
+}
+
+impl TextSection {
+    pub fn into_arc_ref_cell(self) -> Arc<RefCell<Self>> {
+        Arc::new(RefCell::new(self))
+    }
+
+    fn create_section(&self, render_width: u32, render_height: u32) -> OwnedSection {
+        match self {
+            TextSection::Absolute(section) => section.clone(),
+            TextSection::Relative(section) => {
+                let relative_pos = section.screen_position;
+                section.clone().with_screen_position((
+                    relative_pos.0 * render_width as f32,
+                    relative_pos.1 * render_height as f32,
+                ))
+            }
+        }
+    }
 }
 
 pub struct TextPrimitive<'a> {
     font: &'a [u8],
-    sections: Vec<Arc<RefCell<OwnedSection>>>,
+    sections: Vec<Arc<RefCell<TextSection>>>,
 
     brush: Option<TextBrush<FontRef<'a>>>,
 
@@ -73,7 +198,7 @@ pub struct TextPrimitive<'a> {
 }
 
 impl<'a> TextPrimitive<'a> {
-    pub fn new(font: &'a [u8], sections: Vec<Arc<RefCell<OwnedSection>>>) -> Self {
+    pub fn new(font: &'a [u8], sections: Vec<Arc<RefCell<TextSection>>>) -> Self {
         Self {
             font,
             sections,
@@ -104,6 +229,13 @@ impl<'a> TextPrimitive<'a> {
 
         Ok(())
     }
+
+    fn create_sections(&self, render_width: u32, render_height: u32) -> Vec<OwnedSection> {
+        self.sections
+            .iter()
+            .map(|section| section.borrow().create_section(render_width, render_height))
+            .collect::<Vec<_>>()
+    }
 }
 
 pub trait ShaderDescriptor {
@@ -117,30 +249,33 @@ pub trait ShaderDescriptor {
 }
 
 pub struct GPUView<'a> {
-    width: u32,
-    height: u32,
+    frame: GPUViewFrame,
 
     multisample_state: wgpu::MultisampleState,
     clear_color: wgpu::Color,
 
     shader_descriptor: Arc<RefCell<dyn ShaderDescriptor>>,
     render_vertices: Vec<Vertex>,
-    frame_vertices: Vec<FrameVertex>,
 
     text_primitives: Vec<TextPrimitive<'a>>,
+
+    texture_width: Option<u32>,
+    texture_height: Option<u32>,
+    resolve_texture: Option<wgpu::Texture>,
+    msaa_texture: Option<wgpu::Texture>,
 
     shader_bind_group: Option<wgpu::BindGroup>,
     render_vertices_buffer: Option<wgpu::Buffer>,
     frame_vertices_buffer: Option<wgpu::Buffer>,
-    resolve_texture: Option<wgpu::Texture>,
-    msaa_texture: Option<wgpu::Texture>,
     render_pipeline: Option<wgpu::RenderPipeline>,
 
+    resolve_texture_sampler: Option<wgpu::Sampler>,
+    frame_bind_group_layout: Option<wgpu::BindGroupLayout>,
     frame_bind_group: Option<wgpu::BindGroup>,
 
     is_initialized: bool,
     render_vertices_changed: bool,
-    frame_vertices_changed: bool,
+    frame_changed: bool,
 }
 
 impl<'a> GPUView<'a> {
@@ -167,12 +302,7 @@ impl<'a> GPUView<'a> {
             ],
         };
 
-    pub fn new(
-        width: u32,
-        height: u32,
-        shader_descriptor: Arc<RefCell<dyn ShaderDescriptor>>,
-        frame_vertices: Vec<FrameVertex>,
-    ) -> Self {
+    pub fn new(frame: GPUViewFrame, shader_descriptor: Arc<RefCell<dyn ShaderDescriptor>>) -> Self {
         let multisample_state = wgpu::MultisampleState {
             count: 4,
             mask: !0,
@@ -182,72 +312,43 @@ impl<'a> GPUView<'a> {
         let clear_color = wgpu::Color::TRANSPARENT;
 
         Self {
-            width,
-            height,
+            frame,
             multisample_state,
             clear_color,
             shader_descriptor,
             render_vertices: Vec::new(),
-            frame_vertices,
             text_primitives: Vec::new(),
+            texture_width: None,
+            texture_height: None,
+            msaa_texture: None,
+            resolve_texture: None,
             shader_bind_group: None,
             render_vertices_buffer: None,
             frame_vertices_buffer: None,
-            msaa_texture: None,
-            resolve_texture: None,
             render_pipeline: None,
+            resolve_texture_sampler: None,
+            frame_bind_group_layout: None,
             frame_bind_group: None,
             is_initialized: false,
             render_vertices_changed: false,
-            frame_vertices_changed: false,
+            frame_changed: false,
         }
-    }
-
-    pub fn new_rect_frame(
-        width: u32,
-        height: u32,
-        shader_descriptor: Arc<RefCell<dyn ShaderDescriptor>>,
-        frame_vertice_upper_left: [f32; 2],
-        frame_vertice_lower_right: [f32; 2],
-    ) -> Self {
-        let frame_vertices = vec![
-            FrameVertex {
-                // A
-                position: frame_vertice_upper_left,
-                tex_coords: [0.0, 0.0],
-            },
-            FrameVertex {
-                // B
-                position: [frame_vertice_upper_left[0], frame_vertice_lower_right[1]],
-                tex_coords: [0.0, 1.0],
-            },
-            FrameVertex {
-                // C
-                position: frame_vertice_lower_right,
-                tex_coords: [1.0, 1.0],
-            },
-            FrameVertex {
-                // A
-                position: frame_vertice_upper_left,
-                tex_coords: [0.0, 0.0],
-            },
-            FrameVertex {
-                // C
-                position: frame_vertice_lower_right,
-                tex_coords: [1.0, 1.0],
-            },
-            FrameVertex {
-                // D
-                position: [frame_vertice_lower_right[0], frame_vertice_upper_left[1]],
-                tex_coords: [1.0, 0.0],
-            },
-        ];
-
-        Self::new(width, height, shader_descriptor, frame_vertices)
     }
 
     pub fn into_arc_ref_cell(self) -> Arc<RefCell<Self>> {
         Arc::new(RefCell::new(self))
+    }
+
+    pub fn set_frame(
+        &mut self,
+        frame: GPUViewFrame,
+        multiview: &GPUMultiView,
+        device: &wgpu::Device,
+    ) {
+        self.frame = frame;
+        self.frame_changed = true;
+
+        let _ = self.resize(multiview, device);
     }
 
     pub fn set_multisample_state(&mut self, multisample_state: wgpu::MultisampleState) {
@@ -258,8 +359,18 @@ impl<'a> GPUView<'a> {
         self.clear_color = clear_color;
     }
 
+    pub fn clear_render_vertices(&mut self) {
+        self.render_vertices.clear();
+        self.render_vertices_changed;
+    }
+
     pub fn set_render_vertices(&mut self, vertices: Vec<Vertex>) {
         self.render_vertices = vertices;
+        self.render_vertices_changed = true;
+    }
+
+    pub fn append_render_vertices(&mut self, vertices: &mut Vec<Vertex>) {
+        self.render_vertices.append(vertices);
         self.render_vertices_changed = true;
     }
 
@@ -267,7 +378,11 @@ impl<'a> GPUView<'a> {
         self.text_primitives = text_primitives;
     }
 
-    pub fn initialize(&mut self, device: &wgpu::Device) -> anyhow::Result<()> {
+    pub fn initialize(
+        &mut self,
+        multiview: &GPUMultiView,
+        device: &wgpu::Device,
+    ) -> anyhow::Result<()> {
         self.shader_descriptor.borrow_mut().initialize(device);
 
         let (shader_bind_group, shader_bind_group_layout) = self
@@ -281,17 +396,30 @@ impl<'a> GPUView<'a> {
             usage: wgpu::BufferUsages::VERTEX,
         });
 
+        let frame_vertices = self.frame.frame_vertices();
+
         let frame_vertices_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("GPUView Frame Vertices Buffer"),
-            contents: bytemuck::cast_slice(self.frame_vertices.as_slice()),
+            contents: bytemuck::cast_slice(frame_vertices.as_slice()),
             usage: wgpu::BufferUsages::VERTEX,
         });
+
+        let multiview_width = multiview
+            .width()
+            .context("Provided multiview was not initialized correctly.")?;
+        let multiview_height = multiview
+            .height()
+            .context("Provided multiview was not initialized correctly.")?;
+        let (frame_relative_width, frame_relative_height) = self.frame.relative_dimensions();
+
+        let texture_width = (multiview_width as f32 * frame_relative_width) as u32;
+        let texture_height = (multiview_height as f32 * frame_relative_height) as u32;
 
         let resolve_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("GPUView Resolve Texture"),
             size: wgpu::Extent3d {
-                width: self.width,
-                height: self.height,
+                width: texture_width,
+                height: texture_height,
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
@@ -305,8 +433,8 @@ impl<'a> GPUView<'a> {
         let msaa_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("GPUView MSAA Texture"),
             size: wgpu::Extent3d {
-                width: self.width,
-                height: self.height,
+                width: texture_width,
+                height: texture_height,
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
@@ -391,32 +519,43 @@ impl<'a> GPUView<'a> {
             multiview: None,
         });
 
+        self.texture_width = Some(texture_width);
+        self.texture_height = Some(texture_height);
+        self.resolve_texture = Some(resolve_texture);
+        self.msaa_texture = Some(msaa_texture);
         self.shader_bind_group = Some(shader_bind_group);
         self.render_vertices_buffer = Some(render_vertices_buffer);
         self.frame_vertices_buffer = Some(frame_vertices_buffer);
-        self.resolve_texture = Some(resolve_texture);
-        self.msaa_texture = Some(msaa_texture);
         self.render_pipeline = Some(render_pipeline);
+        self.resolve_texture_sampler = Some(resolve_texture_sampler);
+        self.frame_bind_group_layout = Some(frame_bind_group_layout);
         self.frame_bind_group = Some(frame_bind_group);
         self.is_initialized = true;
 
         Ok(())
     }
 
-    pub fn resize(&mut self, new_width: u32, new_height: u32, device: &wgpu::Device) {
-        self.width = new_width;
-        self.height = new_height;
-
-        if !self.is_initialized {
-            return;
+    pub fn resize(
+        &mut self,
+        multiview: &GPUMultiView,
+        device: &wgpu::Device,
+    ) -> anyhow::Result<()> {
+        if !self.is_initialized || !multiview.is_initialized {
+            return Err(anyhow::Error::msg(
+                "Cannot resize uninitialized view or with uninitialized multiview.",
+            ));
         }
 
-        self.resolve_texture.as_ref().unwrap().destroy();
-        self.resolve_texture = Some(device.create_texture(&wgpu::TextureDescriptor {
+        let (frame_relative_width, frame_relative_height) = self.frame.relative_dimensions();
+
+        let texture_width = (multiview.width().unwrap() as f32 * frame_relative_width) as u32;
+        let texture_height = (multiview.height().unwrap() as f32 * frame_relative_height) as u32;
+
+        let resolve_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("GPUView Resolve Texture"),
             size: wgpu::Extent3d {
-                width: self.width,
-                height: self.height,
+                width: texture_width,
+                height: texture_height,
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
@@ -425,14 +564,13 @@ impl<'a> GPUView<'a> {
             format: wgpu::TextureFormat::Bgra8Unorm,
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
-        }));
+        });
 
-        self.msaa_texture.as_ref().unwrap().destroy();
-        self.msaa_texture = Some(device.create_texture(&wgpu::TextureDescriptor {
+        let msaa_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("GPUView MSAA Texture"),
             size: wgpu::Extent3d {
-                width: self.width,
-                height: self.height,
+                width: texture_width,
+                height: texture_height,
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
@@ -441,10 +579,61 @@ impl<'a> GPUView<'a> {
             format: wgpu::TextureFormat::Bgra8Unorm,
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             view_formats: &[],
-        }));
+        });
+
+        let frame_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("GPUView Frame Bind Group"),
+            layout: self.frame_bind_group_layout.as_ref().unwrap(),
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(
+                        &resolve_texture.create_view(&wgpu::TextureViewDescriptor::default()),
+                    ),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(
+                        self.resolve_texture_sampler.as_ref().unwrap(),
+                    ),
+                },
+            ],
+        });
+
+        self.resolve_texture.as_ref().unwrap().destroy();
+        self.msaa_texture.as_ref().unwrap().destroy();
+
+        self.texture_width = Some(texture_width);
+        self.texture_height = Some(texture_height);
+        self.resolve_texture = Some(resolve_texture);
+        self.msaa_texture = Some(msaa_texture);
+        self.frame_bind_group = Some(frame_bind_group);
+
+        for text_primitive in &mut self.text_primitives {
+            text_primitive.initialize(
+                device,
+                texture_width,
+                texture_height,
+                self.multisample_state,
+            )?;
+        }
+
+        Ok(())
     }
 
-    pub fn update_vertice_buffers(&mut self, device: &wgpu::Device) {
+    pub fn update_buffers(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) -> anyhow::Result<()> {
+        self.shader_descriptor.borrow().update_buffers(queue);
+
+        if !self.is_initialized {
+            return Err(anyhow::Error::msg(
+                "Cannot update vertex buffers of uninitialized view.",
+            ));
+        }
+
         if self.render_vertices_changed {
             self.render_vertices_buffer.as_ref().unwrap().destroy();
 
@@ -459,19 +648,108 @@ impl<'a> GPUView<'a> {
             self.render_vertices_changed = false;
         }
 
-        if self.frame_vertices_changed {
+        if self.frame_changed {
             self.frame_vertices_buffer.as_ref().unwrap().destroy();
 
             self.frame_vertices_buffer = Some(device.create_buffer_init(
                 &wgpu::util::BufferInitDescriptor {
-                    label: Some("GPUView Frame Vertices Buffer"),
-                    contents: bytemuck::cast_slice(self.frame_vertices.as_slice()),
+                    label: Some("GPUView Render Vertices Buffer"),
+                    contents: bytemuck::cast_slice(self.frame.frame_vertices().as_slice()),
                     usage: wgpu::BufferUsages::VERTEX,
                 },
             ));
 
-            self.frame_vertices_changed = false;
+            self.frame_changed = false;
         }
+
+        Ok(())
+    }
+
+    fn render(
+        &mut self,
+        encoder: &mut wgpu::CommandEncoder,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) -> anyhow::Result<()> {
+        if !self.is_initialized {
+            return Err(anyhow::Error::msg("Cannot render uninitialized view."));
+        }
+
+        self.update_buffers(device, queue)?;
+
+        let render_width = self.texture_width.unwrap();
+        let render_height = self.texture_height.unwrap();
+
+        let resolve_texture_view = self
+            .resolve_texture
+            .as_ref()
+            .unwrap()
+            .create_view(&wgpu::TextureViewDescriptor::default());
+
+        for text_primitive in &mut self.text_primitives {
+            if !text_primitive.is_initialized {
+                text_primitive.initialize(
+                    device,
+                    render_width,
+                    render_height,
+                    self.multisample_state,
+                )?;
+            }
+
+            let sections = text_primitive.create_sections(render_width, render_height);
+            let sections = sections.iter().map(|section| section).collect::<Vec<_>>();
+
+            text_primitive
+                .brush
+                .as_mut()
+                .unwrap()
+                .queue(device, queue, sections)
+                .unwrap();
+        }
+
+        {
+            let shader_bind_group = self.shader_bind_group.as_ref().unwrap();
+
+            let msaa_texture_view = self
+                .msaa_texture
+                .as_ref()
+                .unwrap()
+                .create_view(&wgpu::TextureViewDescriptor::default());
+
+            let render_pipeline = self.render_pipeline.as_ref().unwrap();
+
+            let render_vertices_buffer = self.render_vertices_buffer.as_ref().unwrap();
+
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("GPUView Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &msaa_texture_view,
+                    resolve_target: Some(&resolve_texture_view),
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(self.clear_color),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+
+            render_pass.set_pipeline(render_pipeline);
+            render_pass.set_bind_group(0, shader_bind_group, &[]);
+            render_pass.set_vertex_buffer(0, render_vertices_buffer.slice(..));
+            render_pass.draw(0..self.render_vertices.len() as u32, 0..1);
+
+            for text_primitive in &self.text_primitives {
+                text_primitive
+                    .brush
+                    .as_ref()
+                    .unwrap()
+                    .draw(&mut render_pass);
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -489,6 +767,40 @@ pub struct GPUMultiView<'a> {
 }
 
 impl<'a> GPUMultiView<'a> {
+    const SHADER: &'static str = r#"
+        struct VertexInput {
+            @location(0) position: vec2<f32>,
+            @location(1) tex_coords: vec2<f32>,
+        }
+        
+        struct VertexOutput {
+            @builtin(position) clip_position: vec4<f32>,
+            @location(0) tex_coords: vec2<f32>,
+        };
+        
+        @vertex
+        fn vs_main(
+            model: VertexInput,
+        ) -> VertexOutput {
+            var out: VertexOutput;
+            out.clip_position = vec4<f32>(model.position, 0.0, 1.0);
+            out.tex_coords = model.tex_coords;
+            return out;
+        }
+        
+        @group(0) @binding(0)
+        var texture: texture_2d<f32>;
+        
+        @group(0) @binding(1)
+        var texture_sampler: sampler;
+        
+        @fragment
+        fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+            let color = textureSample(texture, texture_sampler, in.tex_coords);
+            return color;
+        }
+    "#;
+
     pub fn new() -> Self {
         let clear_color = wgpu::Color::TRANSPARENT;
 
@@ -520,7 +832,10 @@ impl<'a> GPUMultiView<'a> {
         let bind_group_layout =
             device.create_bind_group_layout(&GPUView::FRAME_BIND_GROUP_LAYOUT_DESCIPTOR);
 
-        let shader = device.create_shader_module(wgpu::include_wgsl!("multiview.wgsl"));
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Multiview Shader Module"),
+            source: wgpu::ShaderSource::Wgsl(Self::SHADER.into()),
+        });
 
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -572,9 +887,14 @@ impl<'a> GPUMultiView<'a> {
         self.is_initialized = true;
     }
 
-    pub fn resize(&mut self, new_width: u32, new_height: u32, device: &wgpu::Device) {
+    pub fn resize(
+        &mut self,
+        new_width: u32,
+        new_height: u32,
+        device: &wgpu::Device,
+    ) -> anyhow::Result<()> {
         if !self.is_initialized {
-            return;
+            return Err(anyhow::Error::msg("Cannot resize uninitialized multiview."));
         }
 
         let surface_config = self.surface_config.as_mut().unwrap();
@@ -586,6 +906,25 @@ impl<'a> GPUMultiView<'a> {
             .as_ref()
             .unwrap()
             .configure(device, surface_config);
+
+        for render_view in &self.render_views {
+            render_view.borrow_mut().resize(self, device)?;
+        }
+
+        for text_primitive in &mut self.text_primitives {
+            text_primitive.initialize(
+                device,
+                new_width,
+                new_height,
+                wgpu::MultisampleState {
+                    count: 1,
+                    mask: !0,
+                    alpha_to_coverage_enabled: false,
+                },
+            )?;
+        }
+
+        Ok(())
     }
 
     pub fn set_clear_color(&mut self, clear_color: wgpu::Color) {
@@ -600,154 +939,73 @@ impl<'a> GPUMultiView<'a> {
         self.text_primitives = text_primitives;
     }
 
-    pub fn render(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
-        if !self.is_initialized {
-            return;
+    fn clear_surface(&self, view: &wgpu::TextureView, encoder: &mut wgpu::CommandEncoder) {
+        let _clear_render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("GPUView Render Pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(self.clear_color),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+        });
+    }
+
+    fn render_view(
+        &self,
+        render_view: &GPUView,
+        view: &wgpu::TextureView,
+        encoder: &mut wgpu::CommandEncoder,
+    ) -> anyhow::Result<()> {
+        if !self.is_initialized || !render_view.is_initialized {
+            return Err(anyhow::Error::msg(
+                "Cannot render (uninitialized) view on (uninitialized) multiview.",
+            ));
         }
 
-        let output = self
-            .surface
-            .as_ref()
-            .unwrap()
-            .get_current_texture()
-            .unwrap();
+        let frame_bind_group = render_view.frame_bind_group.as_ref().unwrap();
 
-        let view = output
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
+        let frame_vertices_buffer = render_view.frame_vertices_buffer.as_ref().unwrap();
 
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Command Encoder"),
+        let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("Multiview Render Pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
         });
 
-        {
-            let _clear_render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("GPUView Render Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(self.clear_color),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-            });
-        }
+        render_pass.set_pipeline(self.render_pipeline.as_ref().unwrap());
+        render_pass.set_bind_group(0, frame_bind_group, &[]);
+        render_pass.set_vertex_buffer(0, frame_vertices_buffer.slice(..));
+        render_pass.draw(0..render_view.frame.frame_vertices().len() as u32, 0..1);
 
-        for render_view in &self.render_views {
-            if !render_view.borrow().is_initialized {
-                render_view.borrow_mut().initialize(device).unwrap();
-            }
+        Ok(())
+    }
 
-            let render_width = render_view.borrow().width;
-            let render_height = render_view.borrow().height;
-            let multisample_state = render_view.borrow().multisample_state;
-
-            render_view.borrow_mut().update_vertice_buffers(device);
-
-            let resolve_texture_view = render_view
-                .borrow()
-                .resolve_texture
-                .as_ref()
-                .unwrap()
-                .create_view(&wgpu::TextureViewDescriptor::default());
-
-            for text_primitive in &mut render_view.borrow_mut().text_primitives {
-                if !text_primitive.is_initialized {
-                    text_primitive
-                        .initialize(device, render_width, render_height, multisample_state)
-                        .unwrap();
-                }
-
-                let sections = text_primitive
-                    .sections
-                    .iter()
-                    .map(|section| section.borrow().clone())
-                    .collect::<Vec<_>>();
-
-                let sections = sections.iter().map(|section| section).collect::<Vec<_>>();
-
-                text_primitive
-                    .brush
-                    .as_mut()
-                    .unwrap()
-                    .queue(device, queue, sections)
-                    .unwrap();
-            }
-
-            let render_view_ref = render_view.borrow();
-
-            {
-                let shader_bind_group = render_view_ref.shader_bind_group.as_ref().unwrap();
-
-                let msaa_texture_view = render_view_ref
-                    .msaa_texture
-                    .as_ref()
-                    .unwrap()
-                    .create_view(&wgpu::TextureViewDescriptor::default());
-
-                let render_pipeline = render_view_ref.render_pipeline.as_ref().unwrap();
-
-                let render_vertices_buffer =
-                    render_view_ref.render_vertices_buffer.as_ref().unwrap();
-
-                let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("GPUView Render Pass"),
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: &msaa_texture_view,
-                        resolve_target: Some(&resolve_texture_view),
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(render_view_ref.clear_color),
-                            store: wgpu::StoreOp::Store,
-                        },
-                    })],
-                    depth_stencil_attachment: None,
-                    timestamp_writes: None,
-                    occlusion_query_set: None,
-                });
-
-                render_pass.set_pipeline(render_pipeline);
-                render_pass.set_bind_group(0, shader_bind_group, &[]);
-                render_pass.set_vertex_buffer(0, render_vertices_buffer.slice(..));
-                render_pass.draw(0..render_view.borrow().render_vertices.len() as u32, 0..1);
-
-                for text_primitive in &render_view_ref.text_primitives {
-                    text_primitive
-                        .brush
-                        .as_ref()
-                        .unwrap()
-                        .draw(&mut render_pass);
-                }
-            }
-
-            {
-                let frame_bind_group = render_view_ref.frame_bind_group.as_ref().unwrap();
-
-                let frame_vertices_buffer = render_view_ref.frame_vertices_buffer.as_ref().unwrap();
-
-                let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("Multiview Render Pass"),
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: &view,
-                        resolve_target: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Load,
-                            store: wgpu::StoreOp::Store,
-                        },
-                    })],
-                    depth_stencil_attachment: None,
-                    timestamp_writes: None,
-                    occlusion_query_set: None,
-                });
-
-                render_pass.set_pipeline(self.render_pipeline.as_ref().unwrap());
-                render_pass.set_bind_group(0, frame_bind_group, &[]);
-                render_pass.set_vertex_buffer(0, frame_vertices_buffer.slice(..));
-                render_pass.draw(0..render_view.borrow().frame_vertices.len() as u32, 0..1);
-            }
+    fn render_text(
+        &mut self,
+        view: &wgpu::TextureView,
+        encoder: &mut wgpu::CommandEncoder,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) -> anyhow::Result<()> {
+        if !self.is_initialized {
+            return Err(anyhow::Error::msg(
+                "Cannot render text of uninitialized multiview.",
+            ));
         }
 
         let render_width = self.width().unwrap();
@@ -755,34 +1013,26 @@ impl<'a> GPUMultiView<'a> {
 
         for text_primitive in &mut self.text_primitives {
             if !text_primitive.is_initialized {
-                text_primitive
-                    .initialize(
-                        device,
-                        render_width,
-                        render_height,
-                        wgpu::MultisampleState {
-                            count: 1,
-                            mask: !0,
-                            alpha_to_coverage_enabled: false,
-                        },
-                    )
-                    .unwrap();
+                text_primitive.initialize(
+                    device,
+                    render_width,
+                    render_height,
+                    wgpu::MultisampleState {
+                        count: 1,
+                        mask: !0,
+                        alpha_to_coverage_enabled: false,
+                    },
+                )?;
             }
 
-            let sections = text_primitive
-                .sections
-                .iter()
-                .map(|section| section.borrow().clone())
-                .collect::<Vec<_>>();
-
+            let sections = text_primitive.create_sections(render_width, render_height);
             let sections = sections.iter().map(|section| section).collect::<Vec<_>>();
 
             text_primitive
                 .brush
                 .as_mut()
                 .unwrap()
-                .queue(device, queue, sections)
-                .unwrap();
+                .queue(device, queue, sections)?;
         }
 
         {
@@ -810,8 +1060,49 @@ impl<'a> GPUMultiView<'a> {
             }
         }
 
-        queue.submit(std::iter::once(encoder.finish()));
+        Ok(())
+    }
 
+    pub fn render(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) -> anyhow::Result<()> {
+        if !self.is_initialized {
+            return Err(anyhow::Error::msg("Cannot render uninitialized multiview."));
+        }
+
+        let output = self
+            .surface
+            .as_ref()
+            .unwrap()
+            .get_current_texture()
+            .unwrap();
+
+        let view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Command Encoder"),
+        });
+
+        self.clear_surface(&view, &mut encoder);
+
+        for render_view in &self.render_views {
+            if !render_view.borrow().is_initialized {
+                render_view.borrow_mut().initialize(self, device)?;
+            }
+
+            render_view.borrow_mut().update_buffers(device, queue)?;
+
+            render_view
+                .borrow_mut()
+                .render(&mut encoder, device, queue)?;
+            self.render_view(&render_view.borrow(), &view, &mut encoder)?;
+        }
+
+        self.render_text(&view, &mut encoder, device, queue)?;
+
+        queue.submit(std::iter::once(encoder.finish()));
         output.present();
+
+        Ok(())
     }
 }
