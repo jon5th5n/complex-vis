@@ -6,6 +6,7 @@ use gpucanvas_2d::*;
 
 use wgpu_text::glyph_brush::{Section, Text};
 use winit::dpi::PhysicalPosition;
+use winit::keyboard::{KeyCode, PhysicalKey};
 
 use core::cell::RefCell;
 use std::borrow::{Borrow, BorrowMut};
@@ -241,7 +242,14 @@ impl ApplicationHandler for App<'_> {
                 self.delta_t = now - self.prev_t;
                 self.prev_t = now;
 
-                println!("{:?}", self.delta_t.as_millis());
+                // println!("{:?}", self.delta_t.as_millis());
+
+                self.canvas
+                    .get_view()
+                    .as_ref()
+                    .borrow_mut()
+                    .clear_render_vertices();
+                self.canvas.add_function(|x| (x.powi(2)));
 
                 let x = self.mouse_pos.x as f32 / self.multiview.width().unwrap() as f32;
                 let y = self.mouse_pos.y as f32 / self.multiview.height().unwrap() as f32;
@@ -253,16 +261,27 @@ impl ApplicationHandler for App<'_> {
                 self.window.as_ref().unwrap().request_redraw();
             }
             WindowEvent::KeyboardInput { event, .. } => match event.physical_key {
-                winit::keyboard::PhysicalKey::Code(key_code) => {
-                    if key_code == winit::keyboard::KeyCode::Escape {
+                PhysicalKey::Code(key_code) => match key_code {
+                    KeyCode::Escape => {
                         event_loop.exit();
                     }
-                }
+                    KeyCode::KeyD => self.canvas.offset_range((0.2, 0.0)),
+                    KeyCode::KeyA => self.canvas.offset_range((-0.2, 0.0)),
+                    KeyCode::KeyW => self.canvas.offset_range((0.0, 0.2)),
+                    KeyCode::KeyS => self.canvas.offset_range((0.0, -0.2)),
+                    _ => {}
+                },
                 _ => (),
             },
             WindowEvent::CursorMoved { position, .. } => {
                 self.mouse_pos = position;
             }
+            WindowEvent::MouseWheel { delta, .. } => match delta {
+                winit::event::MouseScrollDelta::LineDelta(x, y) => {
+                    self.canvas.scale_range(1.0 - (y * 0.1))
+                }
+                winit::event::MouseScrollDelta::PixelDelta(amt) => (),
+            },
             _ => (),
         }
     }
