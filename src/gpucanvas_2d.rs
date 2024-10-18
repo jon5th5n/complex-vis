@@ -1,4 +1,5 @@
 use crate::{GPUView, GPUViewFrame, ShaderDescriptor, Vertex};
+use std::f32::consts::PI;
 use std::{cell::RefCell, ops::Range, sync::Arc};
 
 struct GPUCanvas2DShaderDescriptor {}
@@ -111,7 +112,7 @@ impl<'a> GPUCanvas2D<'a> {
     pub fn add_function(&mut self, f: fn(f32) -> f32) {
         let mut points = Vec::new();
 
-        let sample_freq = 10000u32;
+        let sample_freq = 1000u32;
 
         let x_start = self.x_range.start;
         let x_len = self.x_range.end - x_start;
@@ -124,7 +125,7 @@ impl<'a> GPUCanvas2D<'a> {
 
             let (lx, ly) = self.global_to_screen((gx, gy));
 
-            points.push((lx, ly));
+            points.push([lx, ly]);
         }
 
         let mut vertices = Vec::new();
@@ -161,169 +162,20 @@ impl LineFunction {
 
 fn vertices_add_polyline(
     vertices: &mut Vec<Vertex>,
-    points: Vec<(f32, f32)>,
+    points: Vec<[f32; 2]>,
     width: f32,
     color: [f32; 4],
 ) {
-    let width_half = width / 2.0;
+    let mut last_point = None;
+    for point in points {
+        vertices_add_circle(vertices, point, width / 2.0, color, 4);
 
-    let mut top_points: Vec<Option<(f32, f32)>> = vec![None; points.len()];
-    let mut bot_points: Vec<Option<(f32, f32)>> = vec![None; points.len()];
-
-    let mut prev_top_line: Option<LineFunction> = None;
-    let mut prev_bot_line: Option<LineFunction> = None;
-    for i in 1..points.len() {
-        let point = points[i];
-        let prev_point = points[i - 1];
-
-        let dx = point.0 - prev_point.0;
-        let dy = point.1 - prev_point.1;
-
-        let slope = dy / dx;
-
-        if !dx.is_finite() || !dy.is_finite() || !slope.is_finite() {
-            continue;
+        if let Some(last_point) = last_point {
+            vertices_add_line(vertices, last_point, point, width, color);
         }
 
-        let dlen = (dx * dx + dy * dy).sqrt();
-
-        let dx_norm = dx.signum() * (-dy) / dlen;
-        let dy_norm = dx.signum() * (dx) / dlen;
-
-        if i == (points.len() - 1) {
-            let e_top = (
-                point.0 + width_half * dx_norm,
-                point.1 + width_half * dy_norm,
-            );
-            let e_bot = (
-                point.0 - width_half * dx_norm,
-                point.1 - width_half * dy_norm,
-            );
-
-            top_points[i] = Some(e_top);
-            bot_points[i] = Some(e_bot);
-        }
-
-        let p_top = (
-            prev_point.0 + width_half * dx_norm,
-            prev_point.1 + width_half * dy_norm,
-        );
-        let p_bot = (
-            prev_point.0 - width_half * dx_norm,
-            prev_point.1 - width_half * dy_norm,
-        );
-
-        let top_line = LineFunction {
-            point: p_top,
-            slope,
-        };
-        let bot_line = LineFunction {
-            point: p_bot,
-            slope,
-        };
-
-        if prev_top_line.is_none()
-            || prev_bot_line.is_none()
-            || ((top_line.slope - prev_top_line.as_ref().unwrap().slope).abs() <= 0.001)
-            || ((bot_line.slope - prev_bot_line.as_ref().unwrap().slope).abs() <= 0.001)
-        // || true
-        {
-            top_points[i - 1] = Some(p_top);
-            bot_points[i - 1] = Some(p_bot);
-
-            prev_top_line = Some(top_line);
-            prev_bot_line = Some(bot_line);
-
-            continue;
-        }
-
-        let top_intersect = top_line.intersection(&prev_top_line.as_ref().unwrap());
-        let bot_intersect = bot_line.intersection(&prev_bot_line.unwrap());
-
-        if !top_intersect.0.is_finite()
-            || !top_intersect.1.is_finite()
-            || !bot_intersect.0.is_finite()
-            || !bot_intersect.1.is_finite()
-            || !top_line.slope.is_finite()
-            || !top_line.point.0.is_finite()
-            || !top_line.point.1.is_finite()
-            || !bot_line.slope.is_finite()
-            || !bot_line.point.0.is_finite()
-            || !bot_line.point.1.is_finite()
-            || top_intersect.1 < 0.0 && top_intersect.0.abs() > 0.1
-            || bot_intersect.1 < 0.0 && bot_intersect.0.abs() > 0.1
-        // || dx_norm.abs() == 1.0
-        {
-            println!("{:?}", top_intersect);
-            println!("{:?}", bot_intersect);
-            println!("{:?}, {:?}, {:?}, {:?}", p_top, p_bot, dx_norm, dy_norm);
-            println!(
-                "{:?}, ({:?} / {:?}), ({:?} - {:?})",
-                slope, dy, dx, point.1, prev_point.1
-            );
-            println!();
-        }
-
-        top_points[i - 1] = Some(top_intersect);
-        bot_points[i - 1] = Some(bot_intersect);
-
-        prev_top_line = Some(top_line);
-        prev_bot_line = Some(bot_line);
+        last_point = Some(point);
     }
-
-    let mut counter = 0;
-
-    let mut a = None;
-    let mut b = None;
-    for i in 0..points.len() {
-        if a.is_none() || b.is_none() {
-            a = top_points[i];
-            b = bot_points[i];
-            continue;
-        }
-
-        let c = bot_points[i];
-        let d = top_points[i];
-
-        if c.is_none() || d.is_none() {
-            continue;
-        }
-
-        vertices.append(&mut vec![
-            Vertex {
-                position: [a.unwrap().0, a.unwrap().1, 0.0],
-                color,
-            },
-            Vertex {
-                position: [b.unwrap().0, b.unwrap().1, 0.0],
-                color,
-            },
-            Vertex {
-                position: [c.unwrap().0, c.unwrap().1, 0.0],
-                color,
-            },
-            Vertex {
-                position: [a.unwrap().0, a.unwrap().1, 0.0],
-                color,
-            },
-            Vertex {
-                position: [c.unwrap().0, c.unwrap().1, 0.0],
-                color,
-            },
-            Vertex {
-                position: [d.unwrap().0, d.unwrap().1, 0.0],
-                color,
-            },
-        ]);
-
-        a = d;
-        b = c;
-    }
-
-    // println!(
-    //     "{:?}",
-    //     [top_points[0], top_points[1], top_points[2], top_points[3]]
-    // );
 }
 
 fn vertices_add_line(
@@ -381,4 +233,44 @@ fn vertices_add_line(
             color,
         },
     ]);
+}
+
+fn vertices_add_circle(
+    vertices: &mut Vec<Vertex>,
+    center: [f32; 2],
+    radius: f32,
+    color: [f32; 4],
+    resolution: u8,
+) {
+    let resolution = 1u32 << resolution.clamp(0, 31);
+
+    let mut circumference_points = Vec::new();
+    for i in 0..resolution {
+        let (sin, cos) = f32::sin_cos((i as f32 / resolution as f32) * 2.0 * PI);
+
+        let x = center[0] + radius * cos;
+        let y = center[1] + radius * sin;
+
+        circumference_points.push([x, y]);
+    }
+
+    let mut last_point = circumference_points[circumference_points.len() - 1];
+    for point in circumference_points {
+        vertices.append(&mut vec![
+            Vertex {
+                position: [last_point[0], last_point[1], 0.0],
+                color,
+            },
+            Vertex {
+                position: [center[0], center[1], 0.0],
+                color,
+            },
+            Vertex {
+                position: [point[0], point[1], 0.0],
+                color,
+            },
+        ]);
+
+        last_point = point;
+    }
 }
