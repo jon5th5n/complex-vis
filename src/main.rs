@@ -242,7 +242,7 @@ impl ApplicationHandler for App<'_> {
                 self.delta_t = now - self.prev_t;
                 self.prev_t = now;
 
-                // println!("{:?}", self.delta_t.as_millis());
+                println!("{:?}", self.delta_t.as_millis());
 
                 self.canvas
                     .get_view()
