@@ -1,5 +1,6 @@
 use crate::{GPUView, GPUViewFrame, ShaderDescriptor, Vertex};
 use std::f32::consts::PI;
+use std::num::NonZeroU8;
 use std::{cell::RefCell, ops::Range, sync::Arc};
 
 struct GPUCanvas2DShaderDescriptor {}
@@ -112,7 +113,7 @@ impl<'a> GPUCanvas2D<'a> {
     pub fn add_function(&mut self, f: fn(f32) -> f32) {
         let mut points = Vec::new();
 
-        let sample_freq = 1000u32;
+        let sample_freq = 5000u32;
 
         let x_start = self.x_range.start;
         let x_len = self.x_range.end - x_start;
@@ -130,14 +131,14 @@ impl<'a> GPUCanvas2D<'a> {
 
         let mut view = self.view.as_ref().borrow_mut();
 
-        vertices_add_polyline(&mut view, points, 0.01, [1.0, 0.0, 0.0, 1.0]);
+        vertices_add_polyline(&mut view, points, 0.005, [1.0, 0.0, 0.0, 1.0]);
     }
 }
 
 fn vertices_add_polyline(view: &mut GPUView, points: Vec<[f32; 2]>, width: f32, color: [f32; 4]) {
     let mut last_point = None;
     for point in points {
-        vertices_add_circle(view, point, width / 2.0, color, 8);
+        vertices_add_circle(view, point, width / 2.0, color, 16);
 
         if let Some(last_point) = last_point {
             vertices_add_line(view, last_point, point, width, color);
@@ -211,13 +212,13 @@ fn vertices_add_circle(
     color: [f32; 4],
     resolution: u8,
 ) {
-    let resolution = 1usize << resolution.clamp(0, 8);
-    let resolution = 256;
+    let scale = u8::MAX as f32 / resolution as f32;
 
     let mut last_point: Option<[f32; 2]> = None;
-    for i in 0..resolution {
-        // let (sin, cos) = f32::sin_cos((i as f32 / resolution as f32) * 2.0 * PI);
-        let sin_cos = CIRCLE_SIN_COS_LOOKUP[i];
+    for i in (0..=resolution).chain([0].into_iter()) {
+        let index = i as f32 * scale;
+
+        let sin_cos = CIRCLE_SIN_COS_LOOKUP[index as usize];
         let sin = sin_cos[0];
         let cos = sin_cos[1];
 

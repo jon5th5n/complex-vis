@@ -374,6 +374,10 @@ impl<'a> GPUView<'a> {
         self.render_vertices_changed = true;
     }
 
+    pub fn get_render_vertices_len(&self) -> usize {
+        self.render_vertices.len()
+    }
+
     pub fn set_text_primitives(&mut self, text_primitives: Vec<TextPrimitive<'a>>) {
         self.text_primitives = text_primitives;
     }
@@ -393,7 +397,7 @@ impl<'a> GPUView<'a> {
         let render_vertices_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("GPUView Render Vertices Buffer"),
             contents: bytemuck::cast_slice(self.render_vertices.as_slice()),
-            usage: wgpu::BufferUsages::VERTEX,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         });
 
         let frame_vertices = self.frame.frame_vertices();
@@ -401,7 +405,7 @@ impl<'a> GPUView<'a> {
         let frame_vertices_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("GPUView Frame Vertices Buffer"),
             contents: bytemuck::cast_slice(frame_vertices.as_slice()),
-            usage: wgpu::BufferUsages::VERTEX,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         });
 
         let multiview_width = multiview
@@ -635,29 +639,50 @@ impl<'a> GPUView<'a> {
         }
 
         if self.render_vertices_changed {
-            self.render_vertices_buffer.as_ref().unwrap().destroy();
+            let new_data = bytemuck::cast_slice(self.render_vertices.as_slice());
 
-            self.render_vertices_buffer = Some(device.create_buffer_init(
-                &wgpu::util::BufferInitDescriptor {
-                    label: Some("GPUView Render Vertices Buffer"),
-                    contents: bytemuck::cast_slice(self.render_vertices.as_slice()),
-                    usage: wgpu::BufferUsages::VERTEX,
-                },
-            ));
+            let buffer = self.render_vertices_buffer.as_ref().unwrap();
+
+            match buffer.size() as usize == new_data.len() {
+                true => {
+                    queue.write_buffer(buffer, 0, new_data);
+                }
+                false => {
+                    buffer.destroy();
+                    self.render_vertices_buffer = Some(device.create_buffer_init(
+                        &wgpu::util::BufferInitDescriptor {
+                            label: Some("GPUView Render Vertices Buffer"),
+                            contents: new_data,
+                            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                        },
+                    ));
+                }
+            }
 
             self.render_vertices_changed = false;
         }
 
         if self.frame_changed {
-            self.frame_vertices_buffer.as_ref().unwrap().destroy();
+            let frame_vertices = self.frame.frame_vertices();
+            let new_data = bytemuck::cast_slice(frame_vertices.as_slice());
 
-            self.frame_vertices_buffer = Some(device.create_buffer_init(
-                &wgpu::util::BufferInitDescriptor {
-                    label: Some("GPUView Render Vertices Buffer"),
-                    contents: bytemuck::cast_slice(self.frame.frame_vertices().as_slice()),
-                    usage: wgpu::BufferUsages::VERTEX,
-                },
-            ));
+            let buffer = self.frame_vertices_buffer.as_ref().unwrap();
+
+            match buffer.size() as usize == new_data.len() {
+                true => {
+                    queue.write_buffer(buffer, 0, new_data);
+                }
+                false => {
+                    buffer.destroy();
+                    self.frame_vertices_buffer = Some(device.create_buffer_init(
+                        &wgpu::util::BufferInitDescriptor {
+                            label: Some("GPUView Render Vertices Buffer"),
+                            contents: new_data,
+                            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                        },
+                    ));
+                }
+            }
 
             self.frame_changed = false;
         }
@@ -1090,7 +1115,7 @@ impl<'a> GPUMultiView<'a> {
                 render_view.borrow_mut().initialize(self, device)?;
             }
 
-            render_view.borrow_mut().update_buffers(device, queue)?;
+            // render_view.borrow_mut().update_buffers(device, queue)?;
 
             render_view
                 .borrow_mut()

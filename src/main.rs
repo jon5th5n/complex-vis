@@ -242,7 +242,18 @@ impl ApplicationHandler for App<'_> {
                 self.delta_t = now - self.prev_t;
                 self.prev_t = now;
 
-                println!("{:?}", self.delta_t.as_millis());
+                let num_vertices = self
+                    .canvas
+                    .get_view()
+                    .as_ref()
+                    .borrow()
+                    .get_render_vertices_len();
+
+                println!(
+                    "{}ms with {} vertices",
+                    self.delta_t.as_micros() as f32 / 1000.0,
+                    num_vertices
+                );
 
                 self.canvas
                     .get_view()
@@ -250,6 +261,11 @@ impl ApplicationHandler for App<'_> {
                     .borrow_mut()
                     .clear_render_vertices();
                 self.canvas.add_function(|x| (x.powi(2)));
+                self.canvas.add_function(|x| (x.exp()));
+                self.canvas.add_function(|x| (x.ln()));
+                self.canvas.add_function(|x| (x.sin()));
+                self.canvas.add_function(|x| (x.cos()));
+                self.canvas.add_function(|x| (x.tan()));
 
                 let x = self.mouse_pos.x as f32 / self.multiview.width().unwrap() as f32;
                 let y = self.mouse_pos.y as f32 / self.multiview.height().unwrap() as f32;
