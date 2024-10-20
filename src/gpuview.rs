@@ -108,6 +108,19 @@ pub enum GPUViewFrame {
 }
 
 impl GPUViewFrame {
+    pub fn with_margin(self, margin: (f32, f32)) -> Self {
+        let upper_left = self.upper_left();
+        let lower_right = self.lower_right();
+
+        let upper_left = (upper_left.0 + margin.0, upper_left.1 - margin.1);
+        let lower_right = (lower_right.0 - margin.0, lower_right.1 + margin.1);
+
+        Self::Custom {
+            upper_left,
+            lower_right,
+        }
+    }
+
     // 0---1---2
     // |   |   |
     // 3---4---5
@@ -125,28 +138,36 @@ impl GPUViewFrame {
         (1.0, -1.0),  // 8
     ];
 
-    fn frame_vertices(&self) -> Vec<FrameVertex> {
+    fn upper_left(&self) -> (f32, f32) {
         match self {
-            GPUViewFrame::Whole => {
-                FrameVertex::vertices_from_rect(Self::QUAD_VERTS_POS[0], Self::QUAD_VERTS_POS[8])
-            }
-            GPUViewFrame::UpperLeftQuad => {
-                FrameVertex::vertices_from_rect(Self::QUAD_VERTS_POS[0], Self::QUAD_VERTS_POS[4])
-            }
-            GPUViewFrame::UpperRightQuad => {
-                FrameVertex::vertices_from_rect(Self::QUAD_VERTS_POS[1], Self::QUAD_VERTS_POS[5])
-            }
-            GPUViewFrame::LowerLeftQuad => {
-                FrameVertex::vertices_from_rect(Self::QUAD_VERTS_POS[3], Self::QUAD_VERTS_POS[7])
-            }
-            GPUViewFrame::LowerRightQuad => {
-                FrameVertex::vertices_from_rect(Self::QUAD_VERTS_POS[4], Self::QUAD_VERTS_POS[8])
-            }
+            GPUViewFrame::Whole => Self::QUAD_VERTS_POS[0],
+            GPUViewFrame::UpperLeftQuad => Self::QUAD_VERTS_POS[0],
+            GPUViewFrame::UpperRightQuad => Self::QUAD_VERTS_POS[1],
+            GPUViewFrame::LowerLeftQuad => Self::QUAD_VERTS_POS[3],
+            GPUViewFrame::LowerRightQuad => Self::QUAD_VERTS_POS[4],
             GPUViewFrame::Custom {
                 upper_left,
-                lower_right,
-            } => FrameVertex::vertices_from_rect(*upper_left, *lower_right),
+                lower_right: _,
+            } => *upper_left,
         }
+    }
+
+    fn lower_right(&self) -> (f32, f32) {
+        match self {
+            GPUViewFrame::Whole => Self::QUAD_VERTS_POS[8],
+            GPUViewFrame::UpperLeftQuad => Self::QUAD_VERTS_POS[4],
+            GPUViewFrame::UpperRightQuad => Self::QUAD_VERTS_POS[5],
+            GPUViewFrame::LowerLeftQuad => Self::QUAD_VERTS_POS[7],
+            GPUViewFrame::LowerRightQuad => Self::QUAD_VERTS_POS[8],
+            GPUViewFrame::Custom {
+                upper_left: _,
+                lower_right,
+            } => *lower_right,
+        }
+    }
+
+    fn frame_vertices(&self) -> Vec<FrameVertex> {
+        FrameVertex::vertices_from_rect(self.upper_left(), self.lower_right())
     }
 
     fn relative_dimensions(&self) -> (f32, f32) {
@@ -239,13 +260,13 @@ impl<'a> TextPrimitive<'a> {
 }
 
 pub trait ShaderDescriptor {
-    fn initialize(&mut self, device: &wgpu::Device);
-    fn update_buffers(&self, queue: &wgpu::Queue);
+    fn initialize(&mut self, device: &wgpu::Device) -> anyhow::Result<()>;
+    fn update_buffers(&mut self, queue: &wgpu::Queue) -> anyhow::Result<()>;
     fn shader_source(&self) -> wgpu::ShaderSource;
     fn bind_group_and_layout(
         &self,
         device: &wgpu::Device,
-    ) -> (wgpu::BindGroup, wgpu::BindGroupLayout);
+    ) -> anyhow::Result<(wgpu::BindGroup, wgpu::BindGroupLayout)>;
 }
 
 pub struct GPUView<'a> {
@@ -387,12 +408,12 @@ impl<'a> GPUView<'a> {
         multiview: &GPUMultiView,
         device: &wgpu::Device,
     ) -> anyhow::Result<()> {
-        self.shader_descriptor.borrow_mut().initialize(device);
+        self.shader_descriptor.borrow_mut().initialize(device)?;
 
         let (shader_bind_group, shader_bind_group_layout) = self
             .shader_descriptor
             .borrow()
-            .bind_group_and_layout(device);
+            .bind_group_and_layout(device)?;
 
         let render_vertices_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("GPUView Render Vertices Buffer"),
@@ -630,7 +651,7 @@ impl<'a> GPUView<'a> {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) -> anyhow::Result<()> {
-        self.shader_descriptor.borrow().update_buffers(queue);
+        self.shader_descriptor.borrow_mut().update_buffers(queue)?;
 
         if !self.is_initialized {
             return Err(anyhow::Error::msg(

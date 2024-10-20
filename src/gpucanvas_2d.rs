@@ -1,13 +1,37 @@
+use wgpu::util::DeviceExt;
+
 use crate::{GPUView, GPUViewFrame, ShaderDescriptor, Vertex};
-use std::f32::consts::PI;
-use std::num::NonZeroU8;
 use std::{cell::RefCell, ops::Range, sync::Arc};
 
-struct GPUCanvas2DShaderDescriptor {}
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::NoUninit)]
+struct GPUCanvas2DShaderEnv {
+    range_start: [f32; 2],
+    range_end: [f32; 2],
+}
+
+struct GPUCanvas2DShaderDescriptor {
+    enviroment: GPUCanvas2DShaderEnv,
+
+    enviroment_buffer: Option<wgpu::Buffer>,
+
+    is_initialized: bool,
+    enviroment_changed: bool,
+}
 
 impl GPUCanvas2DShaderDescriptor {
-    fn new() -> Self {
-        Self {}
+    fn new(enviroment: GPUCanvas2DShaderEnv) -> Self {
+        Self {
+            enviroment,
+            enviroment_buffer: None,
+            is_initialized: false,
+            enviroment_changed: false,
+        }
+    }
+
+    fn enviroment_get_mut(&mut self) -> &mut GPUCanvas2DShaderEnv {
+        self.enviroment_changed = true;
+        &mut self.enviroment
     }
 
     fn into_arc_ref_cell(self) -> Arc<RefCell<Self>> {
@@ -16,12 +40,37 @@ impl GPUCanvas2DShaderDescriptor {
 }
 
 impl ShaderDescriptor for GPUCanvas2DShaderDescriptor {
-    fn initialize(&mut self, device: &wgpu::Device) {
-        return;
+    fn initialize(&mut self, device: &wgpu::Device) -> anyhow::Result<()> {
+        self.enviroment_buffer = Some(device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("GPUCanvas2DShaderDescriptor Enviroment Variable Buffer"),
+                contents: bytemuck::bytes_of(&self.enviroment),
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            },
+        ));
+
+        self.is_initialized = true;
+
+        Ok(())
     }
 
-    fn update_buffers(&self, queue: &wgpu::Queue) {
-        return;
+    fn update_buffers(&mut self, queue: &wgpu::Queue) -> anyhow::Result<()> {
+        if !self.is_initialized {
+            return Err(anyhow::Error::msg(
+                "Cannot update buffer of uninitialized shader descriptor.",
+            ));
+        }
+
+        if self.enviroment_changed {
+            let new_data = bytemuck::bytes_of(&self.enviroment);
+
+            let buffer = self.enviroment_buffer.as_ref().unwrap();
+            queue.write_buffer(buffer, 0, new_data);
+
+            self.enviroment_changed = false;
+        }
+
+        Ok(())
     }
 
     fn shader_source(&self) -> wgpu::ShaderSource {
@@ -31,28 +80,50 @@ impl ShaderDescriptor for GPUCanvas2DShaderDescriptor {
     fn bind_group_and_layout(
         &self,
         device: &wgpu::Device,
-    ) -> (wgpu::BindGroup, wgpu::BindGroupLayout) {
+    ) -> anyhow::Result<(wgpu::BindGroup, wgpu::BindGroupLayout)> {
+        if !self.is_initialized {
+            return Err(anyhow::Error::msg(
+                "Cannot get BindGroup and BindGroupLayout of uninitialized GPUCanvas2DShaderDescriptor.",
+            ));
+        }
+
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Shader Descripot Bind Group Layout"),
-            entries: &[],
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
         });
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Shader Descriptor Bind Group"),
             layout: &bind_group_layout,
-            entries: &[],
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::Buffer(
+                    self.enviroment_buffer
+                        .as_ref()
+                        .unwrap()
+                        .as_entire_buffer_binding(),
+                ),
+            }],
         });
 
-        (bind_group, bind_group_layout)
+        Ok((bind_group, bind_group_layout))
     }
 }
 
 pub struct GPUCanvas2D<'a> {
-    x_margin: f32,
-    y_margin: f32,
+    x_range: Range<f32>, // coordinate space
+    y_range: Range<f32>, // coordinate space
 
-    x_range: Range<f32>,
-    y_range: Range<f32>,
+    functions: Vec<fn(f32) -> f32>,
 
     shader_descriptor: Arc<RefCell<GPUCanvas2DShaderDescriptor>>,
     view: Arc<RefCell<GPUView<'a>>>,
@@ -60,13 +131,17 @@ pub struct GPUCanvas2D<'a> {
 
 impl<'a> GPUCanvas2D<'a> {
     pub fn new(view_frame: GPUViewFrame) -> Self {
-        let shader_descriptor = GPUCanvas2DShaderDescriptor::new().into_arc_ref_cell();
+        let shader_enviroment = GPUCanvas2DShaderEnv {
+            range_start: [-1.0, -1.0],
+            range_end: [1.0, 1.0],
+        };
+        let shader_descriptor =
+            GPUCanvas2DShaderDescriptor::new(shader_enviroment).into_arc_ref_cell();
 
         Self {
-            x_margin: 0.05,
-            y_margin: 0.05,
             x_range: -1.0..1.0,
             y_range: -1.0..1.0,
+            functions: Vec::new(),
             shader_descriptor: shader_descriptor.clone(),
             view: GPUView::new(view_frame, shader_descriptor).into_arc_ref_cell(),
         }
@@ -80,17 +155,29 @@ impl<'a> GPUCanvas2D<'a> {
         self.view.as_ref().borrow_mut().set_clear_color(clear_color);
     }
 
-    pub fn scale_range(&mut self, scale: f32) {
-        let x_diff = self.x_range_len() * (scale - 1.0);
-        let y_diff = self.y_range_len() * (scale - 1.0);
+    pub fn scale_range(&mut self, scale: (f32, f32)) {
+        let x_diff = self.x_range_len() * (scale.0 - 1.0);
+        let y_diff = self.y_range_len() * (scale.1 - 1.0);
 
         self.x_range = (self.x_range.start - (x_diff * 0.5))..(self.x_range.end + (x_diff * 0.5));
         self.y_range = (self.y_range.start - (y_diff * 0.5))..(self.y_range.end + (y_diff * 0.5));
+
+        let mut tmp = self.shader_descriptor.borrow_mut();
+        let env = tmp.enviroment_get_mut();
+
+        env.range_start = [self.x_range.start, self.y_range.start];
+        env.range_end = [self.x_range.end, self.y_range.end];
     }
 
     pub fn offset_range(&mut self, offset: (f32, f32)) {
         self.x_range = (self.x_range.start + offset.0)..(self.x_range.end + offset.0);
         self.y_range = (self.y_range.start + offset.1)..(self.y_range.end + offset.1);
+
+        let mut tmp = self.shader_descriptor.borrow_mut();
+        let env = tmp.enviroment_get_mut();
+
+        env.range_start = [self.x_range.start, self.y_range.start];
+        env.range_end = [self.x_range.end, self.y_range.end];
     }
 
     fn x_range_len(&self) -> f32 {
@@ -121,17 +208,17 @@ impl<'a> GPUCanvas2D<'a> {
         let step = x_len / sample_freq as f32;
 
         for i in 0..=sample_freq {
-            let gx = x_start + (step * i as f32);
-            let gy = f(gx);
+            let x = x_start + (step * i as f32);
+            let y = f(x);
 
-            let (lx, ly) = self.global_to_screen((gx, gy));
-
-            points.push([lx, ly]);
+            points.push([x, y]);
         }
+
+        let thickness = 0.005 * ((self.x_range_len() + self.y_range_len()) / 2.0);
 
         let mut view = self.view.as_ref().borrow_mut();
 
-        vertices_add_polyline(&mut view, points, 0.005, [1.0, 0.0, 0.0, 1.0]);
+        vertices_add_polyline(&mut view, points, thickness, [1.0, 0.0, 0.0, 1.0]);
     }
 }
 

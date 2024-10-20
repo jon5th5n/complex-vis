@@ -21,92 +21,6 @@ use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
 
-// struct ExampleShaderDesc {
-//     offset: [f32; 3],
-
-//     buffer: Option<wgpu::Buffer>,
-
-//     is_initialized: bool,
-//     offset_changed: bool,
-// }
-
-// impl ExampleShaderDesc {
-//     pub fn new(offset: [f32; 3]) -> Self {
-//         Self {
-//             offset,
-//             buffer: None,
-//             is_initialized: false,
-//             offset_changed: false,
-//         }
-//     }
-
-//     pub fn set_offset(&mut self, offset: [f32; 3]) {
-//         self.offset = offset;
-//         self.offset_changed = true;
-//     }
-
-//     pub fn into_arc_ref_cell(self) -> Arc<RefCell<Self>> {
-//         Arc::new(RefCell::new(self))
-//     }
-// }
-
-// impl ShaderDescriptor for ExampleShaderDesc {
-//     fn initialize(&mut self, device: &wgpu::Device) {
-//         let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-//             label: Some("Shader Descriptor Buffer"),
-//             contents: bytemuck::bytes_of(&self.offset),
-//             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-//         });
-
-//         self.buffer = Some(buffer);
-//         self.is_initialized = true;
-//     }
-
-//     fn update_buffers(&self, queue: &wgpu::Queue) {
-//         if self.offset_changed {
-//             queue.write_buffer(
-//                 self.buffer.as_ref().unwrap(),
-//                 0,
-//                 bytemuck::bytes_of(&self.offset),
-//             )
-//         }
-//     }
-
-//     fn shader_source(&self) -> wgpu::ShaderSource {
-//         wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into())
-//     }
-
-//     fn bind_group_and_layout(
-//         &self,
-//         device: &wgpu::Device,
-//     ) -> (wgpu::BindGroup, wgpu::BindGroupLayout) {
-//         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-//             label: Some("Shader Descripot Bind Group Layout"),
-//             entries: &[wgpu::BindGroupLayoutEntry {
-//                 binding: 0,
-//                 visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-//                 ty: wgpu::BindingType::Buffer {
-//                     ty: wgpu::BufferBindingType::Uniform,
-//                     has_dynamic_offset: false,
-//                     min_binding_size: None,
-//                 },
-//                 count: None,
-//             }],
-//         });
-
-//         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-//             label: Some("Shader Descriptor Bind Group"),
-//             layout: &bind_group_layout,
-//             entries: &[wgpu::BindGroupEntry {
-//                 binding: 0,
-//                 resource: self.buffer.as_ref().unwrap().as_entire_binding(),
-//             }],
-//         });
-
-//         (bind_group, bind_group_layout)
-//     }
-// }
-
 struct App<'a> {
     window: Option<Arc<Window>>,
 
@@ -129,7 +43,7 @@ impl<'a> App<'a> {
             device: None,
             queue: None,
             multiview: GPUMultiView::new(),
-            canvas: GPUCanvas2D::new(GPUViewFrame::Whole),
+            canvas: GPUCanvas2D::new(GPUViewFrame::Whole.with_margin((0.1, 0.1))),
             mouse_pos: PhysicalPosition { x: 0.0, y: 0.0 },
             prev_t: std::time::Instant::now(),
             delta_t: std::time::Duration::ZERO,
@@ -196,6 +110,7 @@ impl<'a> App<'a> {
         surface.configure(&device, &surface_config);
 
         self.multiview.initialize(surface, surface_config, &device);
+        self.multiview.set_clear_color(wgpu::Color::WHITE);
 
         self.window = Some(window);
         self.device = Some(Arc::new(device));
@@ -260,12 +175,9 @@ impl ApplicationHandler for App<'_> {
                     .as_ref()
                     .borrow_mut()
                     .clear_render_vertices();
-                self.canvas.add_function(|x| (x.powi(2)));
                 self.canvas.add_function(|x| (x.exp()));
-                self.canvas.add_function(|x| (x.ln()));
                 self.canvas.add_function(|x| (x.sin()));
                 self.canvas.add_function(|x| (x.cos()));
-                self.canvas.add_function(|x| (x.tan()));
 
                 let x = self.mouse_pos.x as f32 / self.multiview.width().unwrap() as f32;
                 let y = self.mouse_pos.y as f32 / self.multiview.height().unwrap() as f32;
@@ -294,7 +206,8 @@ impl ApplicationHandler for App<'_> {
             }
             WindowEvent::MouseWheel { delta, .. } => match delta {
                 winit::event::MouseScrollDelta::LineDelta(x, y) => {
-                    self.canvas.scale_range(1.0 - (y * 0.1))
+                    let scale = 1.0 - (y * 0.1);
+                    self.canvas.scale_range((scale, scale))
                 }
                 winit::event::MouseScrollDelta::PixelDelta(amt) => (),
             },
