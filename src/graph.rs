@@ -70,16 +70,16 @@ impl Default for DimensionStyle {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct GridSpacing {
-    pub spacing: f32,
-    pub substeps: u32,
+pub enum GridSpacing {
+    Dynamic { steps: u32, substeps: u32 },
+    Fixed { spacing: f32, substeps: u32 },
 }
 
 impl Default for GridSpacing {
     fn default() -> Self {
-        Self {
-            spacing: 1.0,
-            substeps: 5,
+        Self::Dynamic {
+            steps: 10,
+            substeps: 4,
         }
     }
 }

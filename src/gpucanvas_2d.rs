@@ -137,8 +137,9 @@ where
     shader_descriptor: Arc<RefCell<GPUCanvas2DShaderDescriptor>>,
     view: Arc<RefCell<GPUView<'a>>>,
 
+    style_changed: bool,
     range_changed: bool,
-    parameter_changed: bool,
+    function_changed: bool,
 }
 
 impl<'a, P> GPUCanvas2D<'a, P>
@@ -161,21 +162,24 @@ where
             parameter: P::default(),
             shader_descriptor: shader_descriptor.clone(),
             view: GPUView::new(view_frame, shader_descriptor).into_arc_ref_cell(),
+            style_changed: true,
             range_changed: true,
-            parameter_changed: false,
+            function_changed: true,
         }
     }
 
     pub fn set_style(&mut self, style: BackgroundStyle) {
         self.style = style;
+        self.style_changed = true;
     }
 
     pub fn style_get_mut(&mut self) -> &mut BackgroundStyle {
+        self.style_changed = true;
         &mut self.style
     }
 
     pub fn parameter_get_mut(&mut self) -> &mut P {
-        self.parameter_changed = true;
+        self.function_changed = true;
         &mut self.parameter
     }
 
@@ -225,12 +229,41 @@ where
         self.y_range.end - self.y_range.start
     }
 
+    fn calculate_dynamic_spacing(range_len: f32, num_steps: u32) -> f32 {
+        let base = range_len / num_steps as f32;
+
+        let steps = [1.0, 2.0, 5.0].into_iter();
+
+        let closest = steps
+            .map(|step| {
+                let log = (base / step).log10().round() as i32;
+                let exp = 10f32.powi(log);
+                step * exp
+            })
+            .map(|exp| (exp, (exp - base).abs()))
+            .min_by(|x, y| x.1.total_cmp(&y.1))
+            .unwrap();
+
+        closest.0
+    }
+
     pub fn add_function_graph(&mut self, function_graph: FunctionGraph<f32, P, f32>) {
         self.functions.push(function_graph);
+        self.function_changed = true;
     }
 
     fn screen_constant(&self, value: f32) -> f32 {
         value * ((self.x_range_len() + self.y_range_len()) / 2.0)
+    }
+
+    fn display_refresh_required(&self) -> bool {
+        self.style_changed || self.range_changed || self.function_changed
+    }
+
+    fn display_reset_refresh(&mut self) {
+        self.style_changed = false;
+        self.range_changed = false;
+        self.function_changed = false;
     }
 
     pub fn display_clear_vertices(&mut self) {
@@ -238,12 +271,11 @@ where
     }
 
     pub fn display(&mut self) {
-        if !self.range_changed && !self.parameter_changed {
+        if !self.display_refresh_required() {
             return;
         }
 
-        self.range_changed = false;
-        self.parameter_changed = false;
+        self.display_reset_refresh();
 
         self.display_clear_vertices();
 
@@ -258,11 +290,21 @@ where
         let y_range_start = self.y_range.start;
         let y_range_end = self.y_range.end;
 
-        let x_step_spacing = self.style.x.spacing.spacing;
-        let x_substeps = self.style.x.spacing.substeps;
+        let (x_step_spacing, x_substeps) = match self.style.x.spacing {
+            GridSpacing::Dynamic { steps, substeps } => (
+                Self::calculate_dynamic_spacing(self.x_range_len(), steps),
+                substeps,
+            ),
+            GridSpacing::Fixed { spacing, substeps } => (spacing, substeps),
+        };
 
-        let y_step_spacing = self.style.y.spacing.spacing;
-        let y_substeps = self.style.y.spacing.substeps;
+        let (y_step_spacing, y_substeps) = match self.style.y.spacing {
+            GridSpacing::Dynamic { steps, substeps } => (
+                Self::calculate_dynamic_spacing(self.y_range_len(), steps),
+                substeps,
+            ),
+            GridSpacing::Fixed { spacing, substeps } => (spacing, substeps),
+        };
 
         let x_substep_spacing = x_step_spacing / (x_substeps + 1) as f32;
         let y_substep_spacing = y_step_spacing / (y_substeps + 1) as f32;
