@@ -1,5 +1,11 @@
+mod color;
+use color::*;
+
 mod gpuview;
 use gpuview::*;
+
+mod graph;
+use graph::*;
 
 mod gpucanvas_2d;
 use gpucanvas_2d::*;
@@ -21,6 +27,11 @@ use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
 
+#[derive(Debug, Default)]
+struct GraphParam {
+    a: f32,
+}
+
 struct App<'a> {
     window: Option<Arc<Window>>,
 
@@ -28,7 +39,7 @@ struct App<'a> {
     queue: Option<Arc<wgpu::Queue>>,
 
     multiview: GPUMultiView<'a>,
-    canvas: GPUCanvas2D<'a>,
+    canvas: GPUCanvas2D<'a, GraphParam>,
 
     mouse_pos: PhysicalPosition<f64>,
 
@@ -112,6 +123,42 @@ impl<'a> App<'a> {
         self.multiview.initialize(surface, surface_config, &device);
         self.multiview.set_clear_color(wgpu::Color::WHITE);
 
+        let square = FunctionGraph {
+            function: |x: f32, p: &GraphParam| (x - p.a).powi(2),
+            style: GraphStyle {
+                color: RGBA::new(131, 39, 196, 255),
+                thickness: Thickness::MEDIUM,
+            },
+        };
+
+        let square = FunctionGraph {
+            function: |x: f32, p: &GraphParam| (x - p.a).powi(2),
+            style: GraphStyle {
+                color: RGBA::new(131, 39, 196, 255),
+                thickness: Thickness::MEDIUM,
+            },
+        };
+
+        let exp = FunctionGraph {
+            function: |x: f32, p: &GraphParam| (x * p.a).exp(),
+            style: GraphStyle {
+                color: RGBA::new(39, 187, 204, 255),
+                thickness: Thickness::EXTRATHIN,
+            },
+        };
+
+        let cos = FunctionGraph {
+            function: |x: f32, p: &GraphParam| x.cos() - p.a,
+            style: GraphStyle {
+                color: RGBA::new(230, 178, 57, 255),
+                thickness: Thickness::THIN,
+            },
+        };
+
+        self.canvas.add_function_graph(square);
+        self.canvas.add_function_graph(exp);
+        self.canvas.add_function_graph(cos);
+
         self.window = Some(window);
         self.device = Some(Arc::new(device));
         self.queue = Some(Arc::new(queue));
@@ -130,8 +177,7 @@ impl ApplicationHandler for App<'_> {
         .block_on()
         .unwrap();
 
-        self.canvas.set_clear_color(wgpu::Color::WHITE);
-        self.canvas.add_function(|x| x.powi(2));
+        self.canvas.set_clear_color(RGBA::WHITE);
 
         let canvas_view = self.canvas.get_view();
 
@@ -170,14 +216,7 @@ impl ApplicationHandler for App<'_> {
                     num_vertices
                 );
 
-                self.canvas
-                    .get_view()
-                    .as_ref()
-                    .borrow_mut()
-                    .clear_render_vertices();
-                self.canvas.add_function(|x| (x.exp()));
-                self.canvas.add_function(|x| (x.sin()));
-                self.canvas.add_function(|x| (x.cos()));
+                self.canvas.display();
 
                 let x = self.mouse_pos.x as f32 / self.multiview.width().unwrap() as f32;
                 let y = self.mouse_pos.y as f32 / self.multiview.height().unwrap() as f32;
@@ -197,6 +236,9 @@ impl ApplicationHandler for App<'_> {
                     KeyCode::KeyA => self.canvas.offset_range((-0.2, 0.0)),
                     KeyCode::KeyW => self.canvas.offset_range((0.0, 0.2)),
                     KeyCode::KeyS => self.canvas.offset_range((0.0, -0.2)),
+
+                    KeyCode::ArrowUp => self.canvas.parameter_get_mut().a += 0.1,
+                    KeyCode::ArrowDown => self.canvas.parameter_get_mut().a -= 0.1,
                     _ => {}
                 },
                 _ => (),
