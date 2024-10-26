@@ -1,10 +1,28 @@
 use anyhow::Context;
-use std::{cell::RefCell, sync::Arc};
+use std::{
+    cell::RefCell,
+    ops::{Add, Div, Mul, Range, Sub},
+    sync::Arc,
+};
 use wgpu::util::DeviceExt;
 use wgpu_text::{
     glyph_brush::{ab_glyph::FontRef, OwnedSection},
     BrushBuilder, TextBrush,
 };
+
+fn lerp<T>(x: T, from: Range<T>, to: Range<T>) -> T
+where
+    T: Copy,
+    T: Add<Output = T> + Sub<Output = T> + Mul<Output = T> + Div<Output = T>,
+{
+    let from_len = from.end - from.start;
+    let to_len = to.end - to.start;
+
+    let to_from_ratio = to_len / from_len;
+
+    let res = to.start + to_from_ratio * (x - from.start);
+    res
+}
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -95,6 +113,7 @@ impl FrameVertex {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
 pub enum GPUViewFrame {
     Whole,
     UpperLeftQuad,
@@ -799,6 +818,12 @@ impl<'a> GPUView<'a> {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct ViewCoordinates {
+    pub view_index: usize,
+    pub coordinates: (f32, f32),
+}
+
 pub struct GPUMultiView<'a> {
     clear_color: wgpu::Color,
 
@@ -983,6 +1008,31 @@ impl<'a> GPUMultiView<'a> {
 
     pub fn set_text_primitives(&mut self, text_primitives: Vec<TextPrimitive<'a>>) {
         self.text_primitives = text_primitives;
+    }
+
+    pub fn get_view_coords_behind(&self, point: (f32, f32)) -> Option<ViewCoordinates> {
+        let x = point.0;
+        let y = point.1;
+
+        let mut view_coords = None;
+        for i in 0..self.render_views.len() {
+            let view = self.render_views[i].borrow();
+
+            let frame_ul = view.frame.upper_left();
+            let frame_lr = view.frame.lower_right();
+
+            let view_x = lerp(x, frame_ul.0..frame_lr.0, -1.0..1.0);
+            let view_y = lerp(y, frame_ul.1..frame_lr.1, 1.0..-1.0);
+
+            if view_x >= -1.0 && view_x <= 1.0 && view_y >= -1.0 && view_y <= 1.0 {
+                view_coords = Some(ViewCoordinates {
+                    view_index: i,
+                    coordinates: (view_x, view_y),
+                })
+            }
+        }
+
+        view_coords
     }
 
     fn clear_surface(&self, view: &wgpu::TextureView, encoder: &mut wgpu::CommandEncoder) {

@@ -23,7 +23,7 @@ use anyhow::Context;
 use pollster::FutureExt;
 use wgpu::util::DeviceExt;
 use winit::application::ApplicationHandler;
-use winit::event::WindowEvent;
+use winit::event::{self, ElementState, MouseButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
 
@@ -42,6 +42,8 @@ struct App<'a> {
     canvas: GPUCanvas2D<'a, GraphParam>,
 
     mouse_pos: PhysicalPosition<f64>,
+    mouse_delta: PhysicalPosition<f64>,
+    mouse_left: bool,
 
     prev_t: std::time::Instant,
     delta_t: std::time::Duration,
@@ -56,6 +58,8 @@ impl<'a> App<'a> {
             multiview: GPUMultiView::new(),
             canvas: GPUCanvas2D::new(GPUViewFrame::Whole.with_margin((0.1, 0.1))),
             mouse_pos: PhysicalPosition { x: 0.0, y: 0.0 },
+            mouse_delta: PhysicalPosition { x: 0.0, y: 0.0 },
+            mouse_left: false,
             prev_t: std::time::Instant::now(),
             delta_t: std::time::Duration::ZERO,
         }
@@ -210,16 +214,23 @@ impl ApplicationHandler for App<'_> {
                     .borrow()
                     .get_render_vertices_len();
 
-                println!(
-                    "{}ms with {} vertices",
-                    self.delta_t.as_micros() as f32 / 1000.0,
-                    num_vertices
-                );
+                // println!(
+                //     "{}ms with {} vertices",
+                //     self.delta_t.as_micros() as f32 / 1000.0,
+                //     num_vertices
+                // );
 
                 self.canvas.display();
 
-                let x = self.mouse_pos.x as f32 / self.multiview.width().unwrap() as f32;
-                let y = self.mouse_pos.y as f32 / self.multiview.height().unwrap() as f32;
+                let x =
+                    (self.mouse_pos.x as f32 / self.multiview.width().unwrap() as f32) * 2.0 - 1.0;
+                let y = -((self.mouse_pos.y as f32 / self.multiview.height().unwrap() as f32)
+                    * 2.0
+                    - 1.0);
+
+                let view_coords = self.multiview.get_view_coords_behind((x, y));
+
+                println!("{:?}", view_coords);
 
                 let _ = self
                     .multiview
@@ -243,15 +254,32 @@ impl ApplicationHandler for App<'_> {
                 },
                 _ => (),
             },
+            WindowEvent::MouseInput { button, state, .. } => match (button, state) {
+                (MouseButton::Left, ElementState::Pressed) => self.mouse_left = true,
+                (MouseButton::Left, ElementState::Released) => self.mouse_left = false,
+                _ => {}
+            },
             WindowEvent::CursorMoved { position, .. } => {
+                self.mouse_delta = PhysicalPosition {
+                    x: position.x - self.mouse_pos.x,
+                    y: position.y - self.mouse_pos.y,
+                };
+
+                if self.mouse_left {
+                    let dx = position.x - self.mouse_pos.x;
+                    let dy = position.y - self.mouse_pos.y;
+
+                    self.canvas.offset_range((dx as f32, dy as f32));
+                }
+
                 self.mouse_pos = position;
             }
             WindowEvent::MouseWheel { delta, .. } => match delta {
-                winit::event::MouseScrollDelta::LineDelta(x, y) => {
+                event::MouseScrollDelta::LineDelta(x, y) => {
                     let scale = 1.0 - (y * 0.1);
                     self.canvas.scale_range((scale, scale))
                 }
-                winit::event::MouseScrollDelta::PixelDelta(amt) => (),
+                event::MouseScrollDelta::PixelDelta(amt) => (),
             },
             _ => (),
         }
