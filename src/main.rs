@@ -266,10 +266,36 @@ impl ApplicationHandler for App<'_> {
                 };
 
                 if self.mouse_left {
-                    let dx = position.x - self.mouse_pos.x;
-                    let dy = position.y - self.mouse_pos.y;
+                    let x =
+                        (position.x as f32 / self.multiview.width().unwrap() as f32) * 2.0 - 1.0;
+                    let y = -((position.y as f32 / self.multiview.height().unwrap() as f32) * 2.0
+                        - 1.0);
 
-                    self.canvas.offset_range((dx as f32, dy as f32));
+                    let prev_x = (self.mouse_pos.x as f32 / self.multiview.width().unwrap() as f32)
+                        * 2.0
+                        - 1.0;
+                    let prev_y = -((self.mouse_pos.y as f32
+                        / self.multiview.height().unwrap() as f32)
+                        * 2.0
+                        - 1.0);
+
+                    let view_pos = self.multiview.get_view_coords_behind((x, y));
+
+                    let prev_view_pos = self.multiview.get_view_coords_behind((prev_x, prev_y));
+
+                    match (view_pos, prev_view_pos) {
+                        (Some(view_pos), Some(prev_view_pos)) => {
+                            if view_pos.view_index != prev_view_pos.view_index {
+                                return;
+                            }
+
+                            let dx = view_pos.coordinates.0 - prev_view_pos.coordinates.0;
+                            let dy = view_pos.coordinates.1 - prev_view_pos.coordinates.1;
+
+                            self.canvas.offset_range((-dx, -dy));
+                        }
+                        _ => {}
+                    }
                 }
 
                 self.mouse_pos = position;
