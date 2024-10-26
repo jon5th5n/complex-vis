@@ -292,7 +292,11 @@ impl ApplicationHandler for App<'_> {
                             let dx = view_pos.coordinates.0 - prev_view_pos.coordinates.0;
                             let dy = view_pos.coordinates.1 - prev_view_pos.coordinates.1;
 
-                            self.canvas.offset_range((-dx, -dy));
+                            let x_rng_len = self.canvas.x_range_len();
+                            let y_rng_len = self.canvas.y_range_len();
+
+                            self.canvas
+                                .offset_range((-dx * x_rng_len * 0.5, -dy * y_rng_len * 0.5));
                         }
                         _ => {}
                     }

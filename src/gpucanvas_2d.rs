@@ -221,11 +221,11 @@ where
         self.update_shader_env_range();
     }
 
-    fn x_range_len(&self) -> f32 {
+    pub fn x_range_len(&self) -> f32 {
         self.x_range.end - self.x_range.start
     }
 
-    fn y_range_len(&self) -> f32 {
+    pub fn y_range_len(&self) -> f32 {
         self.y_range.end - self.y_range.start
     }
 
