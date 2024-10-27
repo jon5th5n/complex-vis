@@ -11,7 +11,9 @@ mod gpucanvas_2d;
 use gpucanvas_2d::*;
 
 use wgpu_text::glyph_brush::ab_glyph::{FontArc, PxScale};
-use wgpu_text::glyph_brush::{Extra, OwnedSection, OwnedText, Section, Text};
+use wgpu_text::glyph_brush::{
+    Extra, HorizontalAlign, Layout, OwnedSection, OwnedText, Section, Text, VerticalAlign,
+};
 use winit::dpi::PhysicalPosition;
 use winit::keyboard::{KeyCode, PhysicalKey};
 
@@ -138,17 +140,21 @@ impl<'a> App<'a> {
             })
             .unwrap();
 
-        let text = TextSection::Absolute(OwnedSection {
-            screen_position: (0.0, 0.0),
-            bounds: Default::default(),
-            layout: Default::default(),
-            text: vec![OwnedText {
-                text: "Hello, world!".to_string(),
-                scale: PxScale { x: 16.0, y: 16.0 },
-                font_id: Default::default(),
-                extra: Default::default(),
-            }],
-        });
+        let text = TextSection::Relative(
+            Section::builder()
+                .add_text(
+                    Text::new("Hello, world")
+                        .with_scale(32.0)
+                        .with_color(RGBA::BLACK),
+                )
+                .with_screen_position((1.0, 1.0))
+                .with_layout(
+                    Layout::default()
+                        .h_align(HorizontalAlign::Right)
+                        .v_align(VerticalAlign::Bottom),
+                )
+                .to_owned(),
+        );
 
         self.multiview
             .add_text_section(text.into_arc_ref_cell(), "Regular")
@@ -241,11 +247,11 @@ impl ApplicationHandler for App<'_> {
                     .borrow()
                     .get_render_vertices_len();
 
-                println!(
-                    "{}ms with {} vertices",
-                    self.delta_t.as_micros() as f32 / 1000.0,
-                    num_vertices
-                );
+                // println!(
+                //     "{}ms with {} vertices",
+                //     self.delta_t.as_micros() as f32 / 1000.0,
+                //     num_vertices
+                // );
 
                 self.canvas.display();
 

@@ -213,6 +213,7 @@ pub struct Font {
     pub font: FontArc,
 }
 
+#[derive(Debug)]
 pub enum TextSection {
     Absolute(OwnedSection),
     Relative(OwnedSection),
@@ -837,7 +838,6 @@ pub struct GPUMultiView<'a> {
 
     render_views: Vec<Arc<RefCell<GPUView>>>,
 
-    text_fonts: Vec<Font>,
     text_primitives: Vec<TextPrimitive>,
 
     surface: Option<wgpu::Surface<'a>>,
@@ -888,7 +888,6 @@ impl<'a> GPUMultiView<'a> {
         Self {
             clear_color,
             render_views: Vec::new(),
-            text_fonts: Vec::new(),
             text_primitives: Vec::new(),
             surface: None,
             surface_config: None,
@@ -1017,34 +1016,35 @@ impl<'a> GPUMultiView<'a> {
         self.render_views = views;
     }
 
-    pub fn clear_fonts(&mut self) {
-        self.text_fonts.clear();
+    pub fn clear_text_primitives_and_fonts(&mut self) {
+        self.text_primitives.clear();
     }
 
     pub fn add_font(&mut self, font: Font) -> anyhow::Result<()> {
-        if self.text_fonts.iter().any(|f| f.name == font.name) {
+        if self
+            .text_primitives
+            .iter()
+            .any(|p| p.font.name == font.name)
+        {
             return Err(anyhow::Error::msg(
                 "Fonts have to be uniquely identifyable by their name.",
             ));
         }
 
-        self.text_fonts.push(font);
+        let text_primitive = TextPrimitive::new(font, Vec::new());
+        self.text_primitives.push(text_primitive);
 
         Ok(())
     }
 
     pub fn set_fonts(&mut self, fonts: Vec<Font>) -> anyhow::Result<()> {
-        self.clear_fonts();
+        self.clear_text_primitives_and_fonts();
 
         for font in fonts {
             self.add_font(font)?;
         }
 
         Ok(())
-    }
-
-    pub fn get_font(&self, font_name: &str) -> Option<&Font> {
-        self.text_fonts.iter().find(|f| f.name == font_name)
     }
 
     pub fn add_text_section(
@@ -1055,21 +1055,10 @@ impl<'a> GPUMultiView<'a> {
         let text_primitive = self
             .text_primitives
             .iter_mut()
-            .find(|p| p.font.name == font_name);
+            .find(|p| p.font.name == font_name)
+            .context("Specified font was not added yet.")?;
 
-        match text_primitive {
-            Some(text_primitive) => text_primitive.sections.push(text_section),
-            None => {
-                let font = self
-                    .get_font(font_name)
-                    .context("Specified font is not present.")?
-                    .clone();
-
-                let text_primitive = TextPrimitive::new(font, vec![text_section]);
-
-                self.text_primitives.push(text_primitive);
-            }
-        }
+        text_primitive.sections.push(text_section);
 
         Ok(())
     }
