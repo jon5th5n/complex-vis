@@ -6,7 +6,10 @@ use std::{
 };
 use wgpu::util::DeviceExt;
 use wgpu_text::{
-    glyph_brush::{ab_glyph::FontRef, OwnedSection},
+    glyph_brush::{
+        ab_glyph::{FontArc, FontRef, FontVec},
+        OwnedSection,
+    },
     BrushBuilder, TextBrush,
 };
 
@@ -204,6 +207,12 @@ impl GPUViewFrame {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct Font {
+    pub name: String,
+    pub font: FontArc,
+}
+
 pub enum TextSection {
     Absolute(OwnedSection),
     Relative(OwnedSection),
@@ -228,17 +237,17 @@ impl TextSection {
     }
 }
 
-pub struct TextPrimitive<'a> {
-    font: &'a [u8],
+pub struct TextPrimitive {
+    font: Font,
     sections: Vec<Arc<RefCell<TextSection>>>,
 
-    brush: Option<TextBrush<FontRef<'a>>>,
+    brush: Option<TextBrush<FontArc>>,
 
     is_initialized: bool,
 }
 
-impl<'a> TextPrimitive<'a> {
-    pub fn new(font: &'a [u8], sections: Vec<Arc<RefCell<TextSection>>>) -> Self {
+impl TextPrimitive {
+    pub fn new(font: Font, sections: Vec<Arc<RefCell<TextSection>>>) -> Self {
         Self {
             font,
             sections,
@@ -254,8 +263,7 @@ impl<'a> TextPrimitive<'a> {
         render_height: u32,
         multisample_state: wgpu::MultisampleState,
     ) -> anyhow::Result<()> {
-        let brush = BrushBuilder::using_font_bytes(&self.font)
-            .context("Failed to build text brush using font bytes.")?
+        let brush = BrushBuilder::using_font(self.font.font.clone())
             .with_multisample(multisample_state)
             .build(
                 device,
@@ -288,7 +296,7 @@ pub trait ShaderDescriptor {
     ) -> anyhow::Result<(wgpu::BindGroup, wgpu::BindGroupLayout)>;
 }
 
-pub struct GPUView<'a> {
+pub struct GPUView {
     frame: GPUViewFrame,
 
     multisample_state: wgpu::MultisampleState,
@@ -297,7 +305,7 @@ pub struct GPUView<'a> {
     shader_descriptor: Arc<RefCell<dyn ShaderDescriptor>>,
     render_vertices: Vec<Vertex>,
 
-    text_primitives: Vec<TextPrimitive<'a>>,
+    text_primitives: Vec<TextPrimitive>,
 
     texture_width: Option<u32>,
     texture_height: Option<u32>,
@@ -318,7 +326,7 @@ pub struct GPUView<'a> {
     frame_changed: bool,
 }
 
-impl<'a> GPUView<'a> {
+impl GPUView {
     const FRAME_BIND_GROUP_LAYOUT_DESCIPTOR: wgpu::BindGroupLayoutDescriptor<'static> =
         wgpu::BindGroupLayoutDescriptor {
             label: Some("GPUView Bind Group Layout"),
@@ -418,7 +426,7 @@ impl<'a> GPUView<'a> {
         self.render_vertices.len()
     }
 
-    pub fn set_text_primitives(&mut self, text_primitives: Vec<TextPrimitive<'a>>) {
+    pub fn set_text_primitives(&mut self, text_primitives: Vec<TextPrimitive>) {
         self.text_primitives = text_primitives;
     }
 
@@ -827,8 +835,10 @@ pub struct ViewCoordinates {
 pub struct GPUMultiView<'a> {
     clear_color: wgpu::Color,
 
-    render_views: Vec<Arc<RefCell<GPUView<'a>>>>,
-    text_primitives: Vec<TextPrimitive<'a>>,
+    render_views: Vec<Arc<RefCell<GPUView>>>,
+
+    text_fonts: Vec<Font>,
+    text_primitives: Vec<TextPrimitive>,
 
     surface: Option<wgpu::Surface<'a>>,
     surface_config: Option<wgpu::SurfaceConfiguration>,
@@ -878,6 +888,7 @@ impl<'a> GPUMultiView<'a> {
         Self {
             clear_color,
             render_views: Vec::new(),
+            text_fonts: Vec::new(),
             text_primitives: Vec::new(),
             surface: None,
             surface_config: None,
@@ -1002,12 +1013,65 @@ impl<'a> GPUMultiView<'a> {
         self.clear_color = clear_color;
     }
 
-    pub fn set_render_views(&mut self, views: Vec<Arc<RefCell<GPUView<'a>>>>) {
+    pub fn set_render_views(&mut self, views: Vec<Arc<RefCell<GPUView>>>) {
         self.render_views = views;
     }
 
-    pub fn set_text_primitives(&mut self, text_primitives: Vec<TextPrimitive<'a>>) {
-        self.text_primitives = text_primitives;
+    pub fn clear_fonts(&mut self) {
+        self.text_fonts.clear();
+    }
+
+    pub fn add_font(&mut self, font: Font) -> anyhow::Result<()> {
+        if self.text_fonts.iter().any(|f| f.name == font.name) {
+            return Err(anyhow::Error::msg(
+                "Fonts have to be uniquely identifyable by their name.",
+            ));
+        }
+
+        self.text_fonts.push(font);
+
+        Ok(())
+    }
+
+    pub fn set_fonts(&mut self, fonts: Vec<Font>) -> anyhow::Result<()> {
+        self.clear_fonts();
+
+        for font in fonts {
+            self.add_font(font)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn get_font(&self, font_name: &str) -> Option<&Font> {
+        self.text_fonts.iter().find(|f| f.name == font_name)
+    }
+
+    pub fn add_text_section(
+        &mut self,
+        text_section: Arc<RefCell<TextSection>>,
+        font_name: &str,
+    ) -> anyhow::Result<()> {
+        let text_primitive = self
+            .text_primitives
+            .iter_mut()
+            .find(|p| p.font.name == font_name);
+
+        match text_primitive {
+            Some(text_primitive) => text_primitive.sections.push(text_section),
+            None => {
+                let font = self
+                    .get_font(font_name)
+                    .context("Specified font is not present.")?
+                    .clone();
+
+                let text_primitive = TextPrimitive::new(font, vec![text_section]);
+
+                self.text_primitives.push(text_primitive);
+            }
+        }
+
+        Ok(())
     }
 
     pub fn get_view_coords_behind(&self, point: (f32, f32)) -> Option<ViewCoordinates> {

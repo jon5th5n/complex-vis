@@ -122,7 +122,7 @@ impl ShaderDescriptor for GPUCanvas2DShaderDescriptor {
     }
 }
 
-pub struct GPUCanvas2D<'a, P>
+pub struct GPUCanvas2D<P>
 where
     P: Default,
 {
@@ -135,14 +135,14 @@ where
     parameter: P,
 
     shader_descriptor: Arc<RefCell<GPUCanvas2DShaderDescriptor>>,
-    view: Arc<RefCell<GPUView<'a>>>,
+    view: Arc<RefCell<GPUView>>,
 
     style_changed: bool,
     range_changed: bool,
     function_changed: bool,
 }
 
-impl<'a, P> GPUCanvas2D<'a, P>
+impl<P> GPUCanvas2D<P>
 where
     P: Default,
 {
@@ -191,7 +191,7 @@ where
         env.range_end = [self.x_range.end, self.y_range.end];
     }
 
-    pub fn get_view(&self) -> Arc<RefCell<GPUView<'a>>> {
+    pub fn get_view(&self) -> Arc<RefCell<GPUView>> {
         self.view.clone()
     }
 
@@ -202,12 +202,40 @@ where
             .set_clear_color(clear_color.into());
     }
 
+    pub fn x_range(&self) -> &Range<f32> {
+        &self.x_range
+    }
+
+    pub fn y_range(&self) -> &Range<f32> {
+        &self.y_range
+    }
+
     pub fn scale_range(&mut self, scale: (f32, f32)) {
+        static MAX_RANGE: f32 = 5.0;
+        static MIN_RANGE: f32 = 0.2;
+
         let x_diff = self.x_range_len() * (scale.0 - 1.0);
         let y_diff = self.y_range_len() * (scale.1 - 1.0);
 
-        self.x_range = (self.x_range.start - (x_diff * 0.5))..(self.x_range.end + (x_diff * 0.5));
-        self.y_range = (self.y_range.start - (y_diff * 0.5))..(self.y_range.end + (y_diff * 0.5));
+        let new_x_range =
+            (self.x_range.start - (x_diff * 0.5))..(self.x_range.end + (x_diff * 0.5));
+        let new_y_range =
+            (self.y_range.start - (y_diff * 0.5))..(self.y_range.end + (y_diff * 0.5));
+
+        if !new_x_range.start.is_finite()
+            || !new_x_range.start.is_finite()
+            || !new_x_range.end.is_finite()
+            || !new_x_range.end.is_finite()
+            || !new_y_range.start.is_finite()
+            || !new_y_range.start.is_finite()
+            || !new_y_range.end.is_finite()
+            || !new_y_range.end.is_finite()
+        {
+            return;
+        }
+
+        self.x_range = new_x_range;
+        self.y_range = new_y_range;
 
         self.range_changed = true;
         self.update_shader_env_range();

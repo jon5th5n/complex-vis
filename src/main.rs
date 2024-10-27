@@ -2,7 +2,7 @@ mod color;
 use color::*;
 
 mod gpuview;
-use gpuview::*;
+use gpuview::{Font, *};
 
 mod graph;
 use graph::*;
@@ -10,7 +10,8 @@ use graph::*;
 mod gpucanvas_2d;
 use gpucanvas_2d::*;
 
-use wgpu_text::glyph_brush::{Section, Text};
+use wgpu_text::glyph_brush::ab_glyph::{FontArc, PxScale};
+use wgpu_text::glyph_brush::{Extra, OwnedSection, OwnedText, Section, Text};
 use winit::dpi::PhysicalPosition;
 use winit::keyboard::{KeyCode, PhysicalKey};
 
@@ -39,7 +40,7 @@ struct App<'a> {
     queue: Option<Arc<wgpu::Queue>>,
 
     multiview: GPUMultiView<'a>,
-    canvas: GPUCanvas2D<'a, GraphParam>,
+    canvas: GPUCanvas2D<GraphParam>,
 
     mouse_pos: PhysicalPosition<f64>,
     mouse_delta: PhysicalPosition<f64>,
@@ -126,6 +127,32 @@ impl<'a> App<'a> {
 
         self.multiview.initialize(surface, surface_config, &device);
         self.multiview.set_clear_color(wgpu::Color::WHITE);
+
+        self.multiview
+            .add_font(Font {
+                name: "Regular".to_string(),
+                font: FontArc::try_from_vec(
+                    std::fs::read("fonts/JetBrainsMono-Regular.ttf").unwrap(),
+                )
+                .unwrap(),
+            })
+            .unwrap();
+
+        let text = TextSection::Absolute(OwnedSection {
+            screen_position: (0.0, 0.0),
+            bounds: Default::default(),
+            layout: Default::default(),
+            text: vec![OwnedText {
+                text: "Hello, world!".to_string(),
+                scale: PxScale { x: 16.0, y: 16.0 },
+                font_id: Default::default(),
+                extra: Default::default(),
+            }],
+        });
+
+        self.multiview
+            .add_text_section(text.into_arc_ref_cell(), "Regular")
+            .unwrap();
 
         let square = FunctionGraph {
             function: |x: f32, p: &GraphParam| (x - p.a).powi(2),
@@ -214,11 +241,11 @@ impl ApplicationHandler for App<'_> {
                     .borrow()
                     .get_render_vertices_len();
 
-                // println!(
-                //     "{}ms with {} vertices",
-                //     self.delta_t.as_micros() as f32 / 1000.0,
-                //     num_vertices
-                // );
+                println!(
+                    "{}ms with {} vertices",
+                    self.delta_t.as_micros() as f32 / 1000.0,
+                    num_vertices
+                );
 
                 self.canvas.display();
 
@@ -230,7 +257,13 @@ impl ApplicationHandler for App<'_> {
 
                 let view_coords = self.multiview.get_view_coords_behind((x, y));
 
-                println!("{:?}", view_coords);
+                // println!(
+                //     "{:?}, {:?}, {:?}, {:?}",
+                //     self.canvas.x_range(),
+                //     self.canvas.x_range_len(),
+                //     self.canvas.y_range(),
+                //     self.canvas.y_range_len()
+                // );
 
                 let _ = self
                     .multiview
@@ -306,7 +339,7 @@ impl ApplicationHandler for App<'_> {
             }
             WindowEvent::MouseWheel { delta, .. } => match delta {
                 event::MouseScrollDelta::LineDelta(x, y) => {
-                    let scale = 1.0 - (y * 0.1);
+                    let scale = 1.0 - (y * 0.05);
                     self.canvas.scale_range((scale, scale))
                 }
                 event::MouseScrollDelta::PixelDelta(amt) => (),
