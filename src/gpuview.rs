@@ -13,19 +13,7 @@ use wgpu_text::{
     BrushBuilder, TextBrush,
 };
 
-fn lerp<T>(x: T, from: Range<T>, to: Range<T>) -> T
-where
-    T: Copy,
-    T: Add<Output = T> + Sub<Output = T> + Mul<Output = T> + Div<Output = T>,
-{
-    let from_len = from.end - from.start;
-    let to_len = to.end - to.start;
-
-    let to_from_ratio = to_len / from_len;
-
-    let res = to.start + to_from_ratio * (x - from.start);
-    res
-}
+use crate::math::lerp;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -427,8 +415,57 @@ impl GPUView {
         self.render_vertices.len()
     }
 
-    pub fn set_text_primitives(&mut self, text_primitives: Vec<TextPrimitive>) {
-        self.text_primitives = text_primitives;
+    pub fn clear_text_sections_and_fonts(&mut self) {
+        self.text_primitives.clear();
+    }
+
+    pub fn clear_text_sections(&mut self) {
+        for primitive in &mut self.text_primitives {
+            primitive.sections.clear();
+        }
+    }
+
+    pub fn add_font(&mut self, font: Font) -> anyhow::Result<()> {
+        if self
+            .text_primitives
+            .iter()
+            .any(|p| p.font.name == font.name)
+        {
+            return Err(anyhow::Error::msg(
+                "Fonts have to be uniquely identifyable by their name.",
+            ));
+        }
+
+        let text_primitive = TextPrimitive::new(font, Vec::new());
+        self.text_primitives.push(text_primitive);
+
+        Ok(())
+    }
+
+    pub fn set_fonts(&mut self, fonts: Vec<Font>) -> anyhow::Result<()> {
+        self.clear_text_sections_and_fonts();
+
+        for font in fonts {
+            self.add_font(font)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn add_text_section(
+        &mut self,
+        text_section: Arc<RefCell<TextSection>>,
+        font_name: &str,
+    ) -> anyhow::Result<()> {
+        let text_primitive = self
+            .text_primitives
+            .iter_mut()
+            .find(|p| p.font.name == font_name)
+            .context("Specified font was not added yet.")?;
+
+        text_primitive.sections.push(text_section);
+
+        Ok(())
     }
 
     pub fn initialize(
@@ -1016,8 +1053,14 @@ impl<'a> GPUMultiView<'a> {
         self.render_views = views;
     }
 
-    pub fn clear_text_primitives_and_fonts(&mut self) {
+    pub fn clear_text_sections_and_fonts(&mut self) {
         self.text_primitives.clear();
+    }
+
+    pub fn clear_text_sections(&mut self) {
+        for primitive in &mut self.text_primitives {
+            primitive.sections.clear();
+        }
     }
 
     pub fn add_font(&mut self, font: Font) -> anyhow::Result<()> {
@@ -1038,7 +1081,7 @@ impl<'a> GPUMultiView<'a> {
     }
 
     pub fn set_fonts(&mut self, fonts: Vec<Font>) -> anyhow::Result<()> {
-        self.clear_text_primitives_and_fonts();
+        self.clear_text_sections_and_fonts();
 
         for font in fonts {
             self.add_font(font)?;
@@ -1074,8 +1117,8 @@ impl<'a> GPUMultiView<'a> {
             let frame_ul = view.frame.upper_left();
             let frame_lr = view.frame.lower_right();
 
-            let view_x = lerp(x, frame_ul.0..frame_lr.0, -1.0..1.0);
-            let view_y = lerp(y, frame_ul.1..frame_lr.1, 1.0..-1.0);
+            let view_x = lerp(x, &(frame_ul.0..frame_lr.0), &(-1.0..1.0));
+            let view_y = lerp(y, &(frame_ul.1..frame_lr.1), &(1.0..-1.0));
 
             if view_x >= -1.0 && view_x <= 1.0 && view_y >= -1.0 && view_y <= 1.0 {
                 view_coords = Some(ViewCoordinates {

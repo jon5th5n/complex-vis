@@ -1,3 +1,6 @@
+mod math;
+use math::*;
+
 mod color;
 use color::*;
 
@@ -129,44 +132,6 @@ impl<'a> App<'a> {
 
         self.multiview.initialize(surface, surface_config, &device);
         self.multiview.set_clear_color(wgpu::Color::WHITE);
-
-        self.multiview
-            .add_font(Font {
-                name: "Regular".to_string(),
-                font: FontArc::try_from_vec(
-                    std::fs::read("fonts/JetBrainsMono-Regular.ttf").unwrap(),
-                )
-                .unwrap(),
-            })
-            .unwrap();
-
-        let text = TextSection::Relative(
-            Section::builder()
-                .add_text(
-                    Text::new("Hello, world")
-                        .with_scale(32.0)
-                        .with_color(RGBA::BLACK),
-                )
-                .with_screen_position((1.0, 1.0))
-                .with_layout(
-                    Layout::default()
-                        .h_align(HorizontalAlign::Right)
-                        .v_align(VerticalAlign::Bottom),
-                )
-                .to_owned(),
-        );
-
-        self.multiview
-            .add_text_section(text.into_arc_ref_cell(), "Regular")
-            .unwrap();
-
-        let square = FunctionGraph {
-            function: |x: f32, p: &GraphParam| (x - p.a).powi(2),
-            style: GraphStyle {
-                color: RGBA::new(131, 39, 196, 255),
-                thickness: Thickness::MEDIUM,
-            },
-        };
 
         let square = FunctionGraph {
             function: |x: f32, p: &GraphParam| (x - p.a).powi(2),

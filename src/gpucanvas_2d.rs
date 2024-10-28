@@ -1,8 +1,15 @@
 use crate::color::*;
 use crate::graph::*;
+use crate::math::lerp;
+use crate::TextSection;
 use crate::{GPUView, GPUViewFrame, ShaderDescriptor, Vertex};
 
 use wgpu::util::DeviceExt;
+use wgpu_text::glyph_brush::HorizontalAlign;
+use wgpu_text::glyph_brush::Layout;
+use wgpu_text::glyph_brush::SectionBuilder;
+use wgpu_text::glyph_brush::Text;
+use wgpu_text::glyph_brush::VerticalAlign;
 
 use std::{cell::RefCell, ops::Range, sync::Arc};
 
@@ -294,8 +301,11 @@ where
         self.function_changed = false;
     }
 
-    pub fn display_clear_vertices(&mut self) {
-        self.view.as_ref().borrow_mut().clear_render_vertices();
+    pub fn display_clear(&mut self) {
+        let mut view = self.view.as_ref().borrow_mut();
+
+        view.clear_render_vertices();
+        view.clear_text_sections();
     }
 
     pub fn display(&mut self) {
@@ -305,7 +315,7 @@ where
 
         self.display_reset_refresh();
 
-        self.display_clear_vertices();
+        self.display_clear();
 
         self.display_background();
         self.display_function_graphs();
@@ -498,6 +508,95 @@ where
                     self.screen_constant(tick_style.thickness),
                     tick_style.color,
                 );
+            }
+        }
+
+        //-----------
+
+        //-- text --
+
+        let text_size = self.style.text.size;
+        let text_font = &self.style.text.font;
+
+        {
+            let start_index = (x_range_start / x_step_spacing).ceil() as i32;
+            let end_index = (x_range_end / x_step_spacing).floor() as i32;
+
+            for i in start_index..=end_index {
+                if i == 0 {
+                    continue;
+                }
+
+                let x = i as f32 * x_step_spacing;
+
+                let x_uv = lerp(x, &self.x_range, &(0.0..1.0));
+                let y_uv = lerp(0.0, &self.y_range, &(1.0..0.0));
+
+                let text = format!("{}", x);
+
+                let text_section = TextSection::Relative(
+                    SectionBuilder::default()
+                        .add_text(Text::new(&text).with_scale(text_size))
+                        .with_screen_position((x_uv, y_uv))
+                        .with_layout(
+                            Layout::default_single_line()
+                                .h_align(HorizontalAlign::Center)
+                                .v_align(VerticalAlign::Top),
+                        )
+                        .to_owned(),
+                )
+                .into_arc_ref_cell();
+
+                let mut view = self.view.borrow_mut();
+                match view.add_text_section(text_section.clone(), &text_font.name) {
+                    Err(_) => {
+                        view.add_font(text_font.clone()).unwrap();
+                        view.add_text_section(text_section.clone(), &text_font.name)
+                            .unwrap();
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        {
+            let start_index = (y_range_start / y_step_spacing).ceil() as i32;
+            let end_index = (y_range_end / y_step_spacing).floor() as i32;
+
+            for i in start_index..=end_index {
+                if i == 0 {
+                    continue;
+                }
+
+                let y = i as f32 * y_step_spacing;
+
+                let x_uv = lerp(0.0, &self.x_range, &(0.0..1.0));
+                let y_uv = lerp(y, &self.y_range, &(1.0..0.0));
+
+                let text = format!(" {}", y);
+
+                let text_section = TextSection::Relative(
+                    SectionBuilder::default()
+                        .add_text(Text::new(&text).with_scale(text_size))
+                        .with_screen_position((x_uv, y_uv))
+                        .with_layout(
+                            Layout::default_single_line()
+                                .h_align(HorizontalAlign::Left)
+                                .v_align(VerticalAlign::Center),
+                        )
+                        .to_owned(),
+                )
+                .into_arc_ref_cell();
+
+                let mut view = self.view.borrow_mut();
+                match view.add_text_section(text_section.clone(), &text_font.name) {
+                    Err(_) => {
+                        view.add_font(text_font.clone()).unwrap();
+                        view.add_text_section(text_section.clone(), &text_font.name)
+                            .unwrap();
+                    }
+                    _ => {}
+                }
             }
         }
 

@@ -1,4 +1,6 @@
-use crate::color::RGBA;
+use wgpu_text::glyph_brush::ab_glyph::FontArc;
+
+use crate::{color::RGBA, gpuview::Font};
 
 /// Structure respresenting the graph of a function.
 ///
@@ -26,11 +28,12 @@ impl Default for GraphStyle {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct BackgroundStyle {
     // pub background_color: RGBA,
     pub x: DimensionStyle,
     pub y: DimensionStyle,
+    pub text: TextStyle,
 }
 
 impl Default for BackgroundStyle {
@@ -39,6 +42,7 @@ impl Default for BackgroundStyle {
             // background_color: RGBA::WHITE,
             x: DimensionStyle::default(),
             y: DimensionStyle::default(),
+            text: TextStyle::default(),
         }
     }
 }
@@ -127,6 +131,27 @@ impl Default for GridStyle {
         Self {
             color: RGBA::grey(200),
             thickness: Thickness::THIN,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TextStyle {
+    pub size: f32,
+    pub font: Font,
+}
+
+impl Default for TextStyle {
+    fn default() -> Self {
+        Self {
+            size: 32.0,
+            font: Font {
+                name: "Default".to_string(),
+                font: FontArc::try_from_vec(
+                    std::fs::read("fonts/JetBrainsMono-Regular.ttf").unwrap(),
+                )
+                .unwrap(),
+            },
         }
     }
 }
