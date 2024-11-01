@@ -135,10 +135,10 @@ where
 {
     style: BackgroundStyle,
 
-    x_range: Range<f32>, // coordinate space
-    y_range: Range<f32>, // coordinate space
+    x_range: Range<f64>, // coordinate space
+    y_range: Range<f64>, // coordinate space
 
-    functions: Vec<FunctionGraph<f32, P, f32>>,
+    functions: Vec<FunctionGraph<f64, P, f64>>,
     parameter: P,
 
     shader_descriptor: Arc<RefCell<GPUCanvas2DShaderDescriptor>>,
@@ -194,8 +194,8 @@ where
         let mut tmp = self.shader_descriptor.borrow_mut();
         let env = tmp.enviroment_get_mut();
 
-        env.range_start = [self.x_range.start, self.y_range.start];
-        env.range_end = [self.x_range.end, self.y_range.end];
+        env.range_start = [self.x_range.start as f32, self.y_range.start as f32];
+        env.range_end = [self.x_range.end as f32, self.y_range.end as f32];
     }
 
     pub fn get_view(&self) -> Arc<RefCell<GPUView>> {
@@ -209,15 +209,15 @@ where
             .set_clear_color(clear_color.into());
     }
 
-    pub fn x_range(&self) -> &Range<f32> {
+    pub fn x_range(&self) -> &Range<f64> {
         &self.x_range
     }
 
-    pub fn y_range(&self) -> &Range<f32> {
+    pub fn y_range(&self) -> &Range<f64> {
         &self.y_range
     }
 
-    pub fn scale_range(&mut self, scale: (f32, f32)) {
+    pub fn scale_range(&mut self, scale: (f64, f64)) {
         static MAX_RANGE: f32 = 5.0;
         static MIN_RANGE: f32 = 0.2;
 
@@ -248,7 +248,7 @@ where
         self.update_shader_env_range();
     }
 
-    pub fn offset_range(&mut self, offset: (f32, f32)) {
+    pub fn offset_range(&mut self, offset: (f64, f64)) {
         self.x_range = (self.x_range.start + offset.0)..(self.x_range.end + offset.0);
         self.y_range = (self.y_range.start + offset.1)..(self.y_range.end + offset.1);
 
@@ -256,23 +256,33 @@ where
         self.update_shader_env_range();
     }
 
-    pub fn x_range_len(&self) -> f32 {
+    pub fn x_range_len(&self) -> f64 {
         self.x_range.end - self.x_range.start
     }
 
-    pub fn y_range_len(&self) -> f32 {
+    pub fn y_range_len(&self) -> f64 {
         self.y_range.end - self.y_range.start
     }
 
-    fn calculate_dynamic_spacing(range_len: f32, num_steps: u32) -> f32 {
-        let base = range_len / num_steps as f32;
+    /// Coordinate transform from range to `-1..1`
+    fn global_to_screen(&self, global: (f64, f64)) -> (f32, f32) {
+        let (gx, gy) = global;
+
+        let lx = (2.0 * gx - self.x_range.start - self.x_range.end) / self.x_range_len();
+        let ly = (2.0 * gy - self.y_range.start - self.y_range.end) / self.y_range_len();
+
+        (lx as f32, ly as f32)
+    }
+
+    fn calculate_dynamic_spacing(range_len: f64, num_steps: u32) -> f64 {
+        let base = range_len / num_steps as f64;
 
         let steps = [1.0, 2.0, 5.0].into_iter();
 
         let closest = steps
             .map(|step| {
                 let log = (base / step).log10().round() as i32;
-                let exp = 10f32.powi(log);
+                let exp = 10f64.powi(log);
                 step * exp
             })
             .map(|exp| (exp, (exp - base).abs()))
@@ -282,13 +292,13 @@ where
         closest.0
     }
 
-    pub fn add_function_graph(&mut self, function_graph: FunctionGraph<f32, P, f32>) {
+    pub fn add_function_graph(&mut self, function_graph: FunctionGraph<f64, P, f64>) {
         self.functions.push(function_graph);
         self.function_changed = true;
     }
 
-    fn screen_constant(&self, value: f32) -> f32 {
-        value * ((self.x_range_len() + self.y_range_len()) / 2.0)
+    fn screen_constant(&self, value: f64) -> f32 {
+        (value * ((self.x_range_len() + self.y_range_len()) / 2.0)) as f32
     }
 
     fn display_refresh_required(&self) -> bool {
@@ -344,8 +354,8 @@ where
             GridSpacing::Fixed { spacing, substeps } => (spacing, substeps),
         };
 
-        let x_substep_spacing = x_step_spacing / (x_substeps + 1) as f32;
-        let y_substep_spacing = y_step_spacing / (y_substeps + 1) as f32;
+        let x_substep_spacing = x_step_spacing / (x_substeps + 1) as f64;
+        let y_substep_spacing = y_step_spacing / (y_substeps + 1) as f64;
 
         //-- grid ---
 
@@ -354,12 +364,13 @@ where
             let end_index = (x_range_end / x_substep_spacing).floor() as i32;
 
             for i in start_index..=end_index {
-                let x = i as f32 * x_substep_spacing;
+                let x = i as f64 * x_substep_spacing;
+                let (sx, _) = self.global_to_screen((x, 0.0));
 
                 self.vertices_add_line(
-                    [x, y_range_start],
-                    [x, y_range_end],
-                    self.screen_constant(subgrid_style.thickness),
+                    [sx, -1.0],
+                    [sx, 1.0],
+                    subgrid_style.thickness,
                     subgrid_style.color,
                 );
             }
@@ -370,12 +381,13 @@ where
             let end_index = (y_range_end / y_substep_spacing).floor() as i32;
 
             for i in start_index..=end_index {
-                let y = i as f32 * y_substep_spacing;
+                let y = i as f64 * y_substep_spacing;
+                let (_, sy) = self.global_to_screen((0.0, y));
 
                 self.vertices_add_line(
-                    [x_range_start, y],
-                    [x_range_end, y],
-                    self.screen_constant(subgrid_style.thickness),
+                    [-1.0, sy],
+                    [1.0, sy],
+                    subgrid_style.thickness,
                     subgrid_style.color,
                 );
             }
@@ -386,12 +398,13 @@ where
             let end_index = (x_range_end / x_step_spacing).floor() as i32;
 
             for i in start_index..=end_index {
-                let x = i as f32 * x_step_spacing;
+                let x = i as f64 * x_step_spacing;
+                let (sx, _) = self.global_to_screen((x, 0.0));
 
                 self.vertices_add_line(
-                    [x, y_range_start],
-                    [x, y_range_end],
-                    self.screen_constant(grid_style.thickness),
+                    [sx, -1.0],
+                    [sx, 1.0],
+                    grid_style.thickness,
                     grid_style.color,
                 );
             }
@@ -402,12 +415,13 @@ where
             let end_index = (y_range_end / y_step_spacing).floor() as i32;
 
             for i in start_index..=end_index {
-                let y = i as f32 * y_step_spacing;
+                let y = i as f64 * y_step_spacing;
+                let (_, sy) = self.global_to_screen((0.0, y));
 
                 self.vertices_add_line(
-                    [x_range_start, y],
-                    [x_range_end, y],
-                    self.screen_constant(grid_style.thickness),
+                    [-1.0, sy],
+                    [1.0, sy],
+                    grid_style.thickness,
                     grid_style.color,
                 );
             }
@@ -416,21 +430,22 @@ where
         //-----------
 
         //-- axes ---
+        let (sx0, sy0) = self.global_to_screen((0.0, 0.0));
 
         if let Some(axis_style) = self.style.x.axis {
             self.vertices_add_line(
-                [x_range_start, 0.0],
-                [x_range_end, 0.0],
-                self.screen_constant(axis_style.thickness),
+                [-1.0, sy0],
+                [1.0, sy0],
+                axis_style.thickness,
                 axis_style.color,
             );
         }
 
         if let Some(axis_style) = self.style.y.axis {
             self.vertices_add_line(
-                [0.0, y_range_start],
-                [0.0, y_range_end],
-                self.screen_constant(axis_style.thickness),
+                [sx0, -1.0],
+                [sx0, 1.0],
+                axis_style.thickness,
                 axis_style.color,
             );
         }
@@ -444,14 +459,16 @@ where
             let end_index = (x_range_end / x_substep_spacing).floor() as i32;
 
             for i in start_index..=end_index {
-                let x = i as f32 * x_substep_spacing;
+                let x = i as f64 * x_substep_spacing;
+
+                let (sx, sy) = self.global_to_screen((x, 0.0));
 
                 self.vertices_add_polyline(
                     &[
-                        [x, self.screen_constant(subtick_style.length / 2.0)],
-                        [x, self.screen_constant(-subtick_style.length / 2.0)],
+                        [sx, sy + subtick_style.length / 2.0],
+                        [sx, sy - subtick_style.length / 2.0],
                     ],
-                    self.screen_constant(subtick_style.thickness),
+                    self.screen_constant(subtick_style.thickness as f64),
                     subtick_style.color,
                 );
             }
@@ -462,14 +479,15 @@ where
             let end_index = (y_range_end / y_substep_spacing).floor() as i32;
 
             for i in start_index..=end_index {
-                let y = i as f32 * y_substep_spacing;
+                let y = i as f64 * y_substep_spacing;
+                let (sx, sy) = self.global_to_screen((0.0, y));
 
                 self.vertices_add_polyline(
                     &[
-                        [self.screen_constant(subtick_style.length / 2.0), y],
-                        [self.screen_constant(-subtick_style.length / 2.0), y],
+                        [sx + subtick_style.length / 2.0, sy],
+                        [sx - subtick_style.length / 2.0, sy],
                     ],
-                    self.screen_constant(subtick_style.thickness),
+                    self.screen_constant(subtick_style.thickness as f64),
                     subtick_style.color,
                 );
             }
@@ -480,14 +498,15 @@ where
             let end_index = (x_range_end / x_step_spacing).floor() as i32;
 
             for i in start_index..=end_index {
-                let x = i as f32 * x_step_spacing;
+                let x = i as f64 * x_step_spacing;
+                let (sx, sy) = self.global_to_screen((x, 0.0));
 
                 self.vertices_add_polyline(
                     &[
-                        [x, self.screen_constant(tick_style.length / 2.0)],
-                        [x, self.screen_constant(-tick_style.length / 2.0)],
+                        [sx, sy + tick_style.length / 2.0],
+                        [sx, sy - tick_style.length / 2.0],
                     ],
-                    self.screen_constant(tick_style.thickness),
+                    self.screen_constant(tick_style.thickness as f64),
                     tick_style.color,
                 );
             }
@@ -498,14 +517,15 @@ where
             let end_index = (y_range_end / y_step_spacing).floor() as i32;
 
             for i in start_index..=end_index {
-                let y = i as f32 * y_step_spacing;
+                let y = i as f64 * y_step_spacing;
+                let (sx, sy) = self.global_to_screen((0.0, y));
 
                 self.vertices_add_polyline(
                     &[
-                        [self.screen_constant(tick_style.length / 2.0), y],
-                        [self.screen_constant(-tick_style.length / 2.0), y],
+                        [sx + tick_style.length / 2.0, sy],
+                        [sx - tick_style.length / 2.0, sy],
                     ],
-                    self.screen_constant(tick_style.thickness),
+                    tick_style.thickness,
                     tick_style.color,
                 );
             }
@@ -527,10 +547,10 @@ where
                     continue;
                 }
 
-                let x = i as f32 * x_step_spacing;
+                let x = i as f64 * x_step_spacing;
 
-                let x_uv = lerp(x, &self.x_range, &(0.0..1.0));
-                let y_uv = lerp(0.0, &self.y_range, &(1.0..0.0));
+                let x_uv = lerp(x, &self.x_range, &(0.0..1.0)) as f32;
+                let y_uv = lerp(0.0, &self.y_range, &(1.0..0.0)) as f32;
 
                 let text = format!("{}", x);
 
@@ -568,10 +588,10 @@ where
                     continue;
                 }
 
-                let y = i as f32 * y_step_spacing;
+                let y = i as f64 * y_step_spacing;
 
-                let x_uv = lerp(0.0, &self.x_range, &(0.0..1.0));
-                let y_uv = lerp(y, &self.y_range, &(1.0..0.0));
+                let x_uv = lerp(0.0, &self.x_range, &(0.0..1.0)) as f32;
+                let y_uv = lerp(y, &self.y_range, &(1.0..0.0)) as f32;
 
                 let text = format!(" {}", y);
 
@@ -611,24 +631,22 @@ where
         let x_start = self.x_range.start;
         let x_len = self.x_range.end - x_start;
 
-        let step = x_len / sample_freq as f32;
+        let step = x_len / sample_freq as f64;
 
         for index in 0..self.functions.len() {
             let f = &self.functions[index];
 
             points.clear();
             for i in 0..=sample_freq {
-                let x = x_start + (step * i as f32);
+                let x = x_start + (step * i as f64);
                 let y = (f.function)(x, &self.parameter);
 
-                points.push([x, y]);
+                let (sx, sy) = self.global_to_screen((x, y));
+
+                points.push([sx, sy]);
             }
 
-            self.vertices_add_polyline(
-                &points,
-                self.screen_constant(f.style.thickness),
-                f.style.color,
-            );
+            self.vertices_add_polyline(&points, f.style.thickness, f.style.color);
         }
     }
 

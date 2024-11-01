@@ -22,19 +22,21 @@ fn vs_main(
 ) -> VertexOutput {
     var out: VertexOutput;
 
-    let rxs = env.range_start.x;
-    let rxe = env.range_end.x;
-    let rys = env.range_start.y;
-    let rye = env.range_end.y;
+    // let rxs = env.range_start.x;
+    // let rxe = env.range_end.x;
+    // let rys = env.range_start.y;
+    // let rye = env.range_end.y;
 
-    let scale_x = 2.0 / (rxe - rxs);
-    let trans_x = (-rxs - rxe) / (rxe - rxs);
-    let scale_y = 2.0 / (rye - rys);
-    let trans_y = (-rys - rye) / (rye - rys);
+    // let scale_x = 2.0 / (rxe - rxs);
+    // let trans_x = (-rxs - rxe) / (rxe - rxs);
+    // let scale_y = 2.0 / (rye - rys);
+    // let trans_y = (-rys - rye) / (rye - rys);
 
-    let scale_trans_mat = mat3x3<f32>(vec3<f32>(scale_x, 0.0, 0.0), vec3<f32>(0.0, scale_y, 0.0), vec3<f32>(trans_x, trans_y, 1.0));
+    // let scale_trans_mat = mat3x3<f32>(vec3<f32>(scale_x, 0.0, 0.0), vec3<f32>(0.0, scale_y, 0.0), vec3<f32>(trans_x, trans_y, 1.0));
 
-    let position = scale_trans_mat * vec3<f32>(model.position.xy, 1.0);
+    // let position = scale_trans_mat * vec3<f32>(model.position.xy, 1.0);
+
+    let position = model.position;
 
     out.clip_position = vec4<f32>(position, 1.0);
     out.color = model.color;

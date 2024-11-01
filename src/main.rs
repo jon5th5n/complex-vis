@@ -35,7 +35,7 @@ use winit::window::{Window, WindowId};
 
 #[derive(Debug, Default)]
 struct GraphParam {
-    a: f32,
+    a: f64,
 }
 
 struct App<'a> {
@@ -134,7 +134,7 @@ impl<'a> App<'a> {
         self.multiview.set_clear_color(wgpu::Color::WHITE);
 
         let square = FunctionGraph {
-            function: |x: f32, p: &GraphParam| (x - p.a).powi(2),
+            function: |x: f64, p: &GraphParam| (x - p.a).powi(2),
             style: GraphStyle {
                 color: RGBA::new(131, 39, 196, 255),
                 thickness: Thickness::MEDIUM,
@@ -142,7 +142,7 @@ impl<'a> App<'a> {
         };
 
         let exp = FunctionGraph {
-            function: |x: f32, p: &GraphParam| (x * p.a).exp(),
+            function: |x: f64, p: &GraphParam| (x * p.a).exp(),
             style: GraphStyle {
                 color: RGBA::new(39, 187, 204, 255),
                 thickness: Thickness::EXTRATHIN,
@@ -150,7 +150,7 @@ impl<'a> App<'a> {
         };
 
         let cos = FunctionGraph {
-            function: |x: f32, p: &GraphParam| x.cos() - p.a,
+            function: |x: f64, p: &GraphParam| x.cos() - p.a,
             style: GraphStyle {
                 color: RGBA::new(230, 178, 57, 255),
                 thickness: Thickness::THIN,
@@ -299,8 +299,10 @@ impl ApplicationHandler for App<'_> {
                             let x_rng_len = self.canvas.x_range_len();
                             let y_rng_len = self.canvas.y_range_len();
 
-                            self.canvas
-                                .offset_range((-dx * x_rng_len * 0.5, -dy * y_rng_len * 0.5));
+                            self.canvas.offset_range((
+                                -dx as f64 * x_rng_len * 0.5,
+                                -dy as f64 * y_rng_len * 0.5,
+                            ));
                         }
                         _ => {}
                     }
@@ -311,7 +313,7 @@ impl ApplicationHandler for App<'_> {
             WindowEvent::MouseWheel { delta, .. } => match delta {
                 event::MouseScrollDelta::LineDelta(x, y) => {
                     let scale = 1.0 - (y * 0.05);
-                    self.canvas.scale_range((scale, scale))
+                    self.canvas.scale_range((scale as f64, scale as f64))
                 }
                 event::MouseScrollDelta::PixelDelta(amt) => (),
             },
