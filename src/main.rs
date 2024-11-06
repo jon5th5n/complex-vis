@@ -1,6 +1,9 @@
 mod math;
 use math::*;
 
+mod decimal_math;
+use decimal_math::*;
+
 mod color;
 use color::*;
 

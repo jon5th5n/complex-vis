@@ -2,6 +2,8 @@ use wgpu_text::glyph_brush::ab_glyph::FontArc;
 
 use crate::{color::RGBA, gpuview::Font};
 
+pub type Decimal = fraction::BigDecimal;
+
 /// Structure respresenting the graph of a function.
 ///
 /// `I`: Input;
@@ -47,7 +49,7 @@ impl Default for BackgroundStyle {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct DimensionStyle {
     pub spacing: GridSpacing,
     pub axis: Option<AxisStyle>,
@@ -73,10 +75,10 @@ impl Default for DimensionStyle {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum GridSpacing {
     Dynamic { steps: u32, substeps: u32 },
-    Fixed { spacing: f64, substeps: u32 },
+    Fixed { spacing: Decimal, substeps: u32 },
 }
 
 impl Default for GridSpacing {

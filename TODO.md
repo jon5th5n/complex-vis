@@ -1,3 +1,2 @@
-- Add decimal coordinate grid spacing with fraction crate
 - Fix panic of glyph code at high zoom and/or distance to origin
 - Fix unwanted artifacts at high zoom and/or distance to origin
