@@ -1,15 +1,22 @@
 use fraction::{generic::GenericInteger, BigDecimal, BigUint};
 
 pub fn decimal_log10_ceil(val: &BigDecimal) -> i32 {
+    if val.is_sign_negative() {
+        panic!("It is not allowed to take the logarithm of a negative number")
+    }
+
+    let dec1 = BigDecimal::from(1);
+    let dec01 = BigDecimal::from(0.1);
+
     let mut dec = val.clone();
 
     let mut digits = 0;
     loop {
-        if dec > BigDecimal::from(1.0) {
+        if dec > dec1 {
             digits += 1;
             dec /= 10;
             continue;
-        } else if dec <= BigDecimal::from(0.1) {
+        } else if dec <= dec01 {
             digits -= 1;
             dec *= 10;
             continue;
@@ -22,6 +29,9 @@ pub fn decimal_log10_ceil(val: &BigDecimal) -> i32 {
 }
 
 pub fn decimal_exp10(exp: i32) -> BigDecimal {
+    let dec10 = BigDecimal::from(10);
+    let dec1 = BigDecimal::from(1);
+
     let exp_sign = exp.signum();
     let exp_abs = exp.abs() as u32;
 
@@ -31,15 +41,15 @@ pub fn decimal_exp10(exp: i32) -> BigDecimal {
             BigDecimal::from(res)
         }
         -1 => {
-            let mut dec = BigDecimal::from(1);
+            let mut dec = dec1;
 
             for _ in 0..exp_abs {
-                dec /= BigDecimal::from(10);
+                dec /= &dec10;
             }
 
             dec
         }
-        _ => BigDecimal::from(1),
+        _ => dec1,
     };
 
     dec
@@ -101,5 +111,58 @@ fn normalize_f64(value: f64) -> (f64, i32) {
         return (normalized_value - 1.0, -1022);
     } else {
         return (normalized_value, exponent);
+    }
+}
+
+pub fn decimal_format_scientific(dec: &BigDecimal) -> String {
+    let dec10 = BigDecimal::from(10);
+    let dec1 = BigDecimal::from(1);
+
+    let mut dec = dec.clone();
+
+    let mut digits = 0;
+    loop {
+        if dec.abs() >= dec10 {
+            digits += 1;
+            dec /= 10;
+            continue;
+        } else if dec.abs() < dec1 {
+            digits -= 1;
+            dec *= 10;
+            continue;
+        }
+
+        break;
+    }
+
+    format!("{}e{}", dec.calc_precision(None), digits)
+}
+
+pub fn decimal_format_scientific_when(dec: &BigDecimal, max_digits: u32) -> String {
+    let dec10 = BigDecimal::from(10);
+    let dec1 = BigDecimal::from(1);
+
+    let mut normalized_dec = dec.clone();
+
+    let mut digits = 0i32;
+    loop {
+        if normalized_dec.abs() >= dec10 {
+            digits += 1;
+            normalized_dec /= 10;
+            continue;
+        } else if normalized_dec.abs() < dec1 {
+            digits -= 1;
+            normalized_dec *= 10;
+            continue;
+        }
+
+        break;
+    }
+
+    let abs_digits = digits.abs() as u32;
+
+    match abs_digits > max_digits {
+        true => format!("{}e{}", normalized_dec.calc_precision(None), digits),
+        false => format!("{}", dec.clone().calc_precision(None)),
     }
 }

@@ -277,7 +277,7 @@ where
     }
 
     fn calculate_dynamic_spacing(range_len: f64, num_steps: u32) -> Decimal {
-        let range_len = Decimal::from(range_len);
+        let range_len = decimal_from_f64(range_len);
         let num_steps = Decimal::from(num_steps);
 
         let base = range_len / num_steps;
@@ -294,7 +294,7 @@ where
             .min_by(|x, y| x.1.cmp(&y.1))
             .unwrap();
 
-        Decimal::from(closest.0)
+        closest.0
     }
 
     pub fn add_function_graph(&mut self, function_graph: FunctionGraph<f64, P, f64>) {
@@ -337,6 +337,8 @@ where
     }
 
     fn display_background(&mut self) {
+        let (sx0, sy0) = self.global_to_screen((0.0, 0.0));
+
         let x_range_start = self.x_range.start;
         let x_range_end = self.x_range.end;
 
@@ -440,7 +442,6 @@ where
         //-----------
 
         //-- axes ---
-        let (sx0, sy0) = self.global_to_screen((0.0, 0.0));
 
         if let Some(axis_style) = self.style.x.axis {
             self.vertices_add_line(
@@ -547,6 +548,7 @@ where
 
         let text_size = self.style.text.size;
         let text_font = &self.style.text.font;
+        let text_max_digits = self.style.text.max_digits;
 
         {
             let start_index = (x_range_start / x_step_spacing_f64).ceil() as i32;
@@ -557,13 +559,13 @@ where
                     continue;
                 }
 
-                let x = (&x_step_spacing * i).calc_precision(None);
+                let x = (&x_step_spacing * i).calc_precision(Some(50));
                 let x_f64 = x_step_spacing_f64 * i as f64;
 
                 let x_uv = lerp(x_f64, &self.x_range, &(0.0..1.0)) as f32;
                 let y_uv = lerp(0.0, &self.y_range, &(1.0..0.0)) as f32;
 
-                let text = format!("{}", x);
+                let text = format!("{}", decimal_format_scientific_when(&x, text_max_digits));
 
                 let text_section = TextSection::Relative(
                     SectionBuilder::default()
@@ -599,13 +601,13 @@ where
                     continue;
                 }
 
-                let y = (&y_step_spacing * i).calc_precision(None);
+                let y = (&y_step_spacing * i).calc_precision(Some(50));
                 let y_f64 = y_step_spacing_f64 * i as f64;
 
                 let x_uv = lerp(0.0, &self.x_range, &(0.0..1.0)) as f32;
                 let y_uv = lerp(y_f64, &self.y_range, &(1.0..0.0)) as f32;
 
-                let text = format!(" {}", y);
+                let text = format!(" {}", decimal_format_scientific_when(&y, text_max_digits));
 
                 let text_section = TextSection::Relative(
                     SectionBuilder::default()

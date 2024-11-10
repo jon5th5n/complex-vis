@@ -141,6 +141,8 @@ impl Default for GridStyle {
 pub struct TextStyle {
     pub size: f32,
     pub font: Font,
+    /// Maximum number of digits before switching to scientific notation
+    pub max_digits: u32,
 }
 
 impl Default for TextStyle {
@@ -149,11 +151,10 @@ impl Default for TextStyle {
             size: 32.0,
             font: Font {
                 name: "Default".to_string(),
-                font: FontArc::try_from_vec(
-                    std::fs::read("fonts/JetBrainsMono-Regular.ttf").unwrap(),
-                )
-                .unwrap(),
+                font: FontArc::try_from_vec(std::fs::read("fonts/DejaVuSans.ttf").unwrap())
+                    .unwrap(),
             },
+            max_digits: 4,
         }
     }
 }

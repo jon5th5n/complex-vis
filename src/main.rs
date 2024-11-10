@@ -148,7 +148,7 @@ impl<'a> App<'a> {
             function: |x: f64, p: &GraphParam| (x * p.a).exp(),
             style: GraphStyle {
                 color: RGBA::new(39, 187, 204, 255),
-                thickness: Thickness::EXTRATHIN,
+                thickness: Thickness::EXTRABOLD,
             },
         };
 
@@ -326,6 +326,8 @@ impl ApplicationHandler for App<'_> {
 }
 
 fn main() {
+    std::env::set_var("RUST_BACKTRACE", "0");
+
     env_logger::init();
     println!("Hello, world!");
 

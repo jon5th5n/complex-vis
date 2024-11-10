@@ -378,6 +378,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "complex-vis"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bytemuck",
+ "env_logger",
+ "fraction",
+ "pollster",
+ "wgpu",
+ "wgpu_text",
+ "winit",
+]
+
+[[package]]
 name = "concurrent-queue"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -736,20 +750,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fdf242682df893b86f33a73828fb09ca4b2d3bb6cc95249707fc684d27484b91"
 dependencies = [
  "bitflags 2.5.0",
-]
-
-[[package]]
-name = "gpu-primitive-canvas"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bytemuck",
- "env_logger",
- "fraction",
- "pollster",
- "wgpu",
- "wgpu_text",
- "winit",
 ]
 
 [[package]]
