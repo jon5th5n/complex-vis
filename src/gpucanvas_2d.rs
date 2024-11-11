@@ -135,7 +135,7 @@ pub struct GPUCanvas2D<P>
 where
     P: Default,
 {
-    style: BackgroundStyle,
+    style: EnviromentStyle,
 
     x_range: Range<f64>, // coordinate space
     y_range: Range<f64>, // coordinate space
@@ -164,7 +164,7 @@ where
             GPUCanvas2DShaderDescriptor::new(shader_enviroment).into_arc_ref_cell();
 
         Self {
-            style: BackgroundStyle::default(),
+            style: EnviromentStyle::default(),
             x_range: -1.0..1.0,
             y_range: -1.0..1.0,
             functions: Vec::new(),
@@ -177,12 +177,12 @@ where
         }
     }
 
-    pub fn set_style(&mut self, style: BackgroundStyle) {
+    pub fn set_style(&mut self, style: EnviromentStyle) {
         self.style = style;
         self.style_changed = true;
     }
 
-    pub fn style_get_mut(&mut self) -> &mut BackgroundStyle {
+    pub fn style_get_mut(&mut self) -> &mut EnviromentStyle {
         self.style_changed = true;
         &mut self.style
     }
@@ -332,18 +332,24 @@ where
 
         self.display_clear();
 
-        self.display_background();
+        self.display_enviroment();
         self.display_function_graphs();
     }
 
-    fn display_background(&mut self) {
+    fn display_enviroment(&mut self) {
+        //-- screen mapping of global zero
+
         let (sx0, sy0) = self.global_to_screen((0.0, 0.0));
+
+        //-- ranges
 
         let x_range_start = self.x_range.start;
         let x_range_end = self.x_range.end;
 
         let y_range_start = self.y_range.start;
         let y_range_end = self.y_range.end;
+
+        //-- spacings in decimal representation
 
         let (x_step_spacing, x_substeps) = match &self.style.x.spacing {
             GridSpacing::Dynamic { steps, substeps } => (
@@ -364,19 +370,69 @@ where
         let x_substep_spacing = &x_step_spacing / (x_substeps + 1) as f64;
         let y_substep_spacing = &y_step_spacing / (y_substeps + 1) as f64;
 
+        //-- floating point representations of the spacings
+
         let x_step_spacing_f64 = x_step_spacing.to_f64().expect(Self::ERROR_DEC_TO_F64);
         let y_step_spacing_f64 = y_step_spacing.to_f64().expect(Self::ERROR_DEC_TO_F64);
         let x_substep_spacing_f64 = x_substep_spacing.to_f64().expect(Self::ERROR_DEC_TO_F64);
         let y_substep_spacing_f64 = y_substep_spacing.to_f64().expect(Self::ERROR_DEC_TO_F64);
 
+        //-- offset to make the ranges symetric to zero
+
+        let x_sym_offset = x_range_start + (self.x_range_len() / 2.0);
+        let x_sym_offset = (x_sym_offset / x_step_spacing_f64).round() * x_step_spacing_f64;
+
+        let y_sym_offset = y_range_start + (self.y_range_len() / 2.0);
+        let y_sym_offset = (y_sym_offset / y_step_spacing_f64).round() * y_step_spacing_f64;
+
+        //-- x spacing indices
+
+        let x_substep_start_index =
+            ((x_range_start - x_sym_offset) / x_substep_spacing_f64).ceil() as i32;
+        let x_substep_end_index =
+            ((x_range_end - x_sym_offset) / x_substep_spacing_f64).floor() as i32;
+
+        let x_step_start_index =
+            ((x_range_start - x_sym_offset) / x_step_spacing_f64).ceil() as i32;
+        let x_step_end_index = ((x_range_end - x_sym_offset) / x_step_spacing_f64).floor() as i32;
+
+        let x_substep_range = x_substep_start_index..=x_substep_end_index;
+        let x_step_range = x_step_start_index..=x_step_end_index;
+
+        //-- y spacing indices
+
+        let y_substep_start_index =
+            ((y_range_start - y_sym_offset) / y_substep_spacing_f64).ceil() as i32;
+        let y_substep_end_index =
+            ((y_range_end - y_sym_offset) / y_substep_spacing_f64).floor() as i32;
+
+        let y_step_start_index =
+            ((y_range_start - y_sym_offset) / y_step_spacing_f64).ceil() as i32;
+        let y_step_end_index = ((y_range_end - y_sym_offset) / y_step_spacing_f64).floor() as i32;
+
+        let y_substep_range = y_substep_start_index..=y_substep_end_index;
+        let y_step_range = y_step_start_index..=y_step_end_index;
+
+        println!(
+            "x-range: {{{:?}, len: {:?}}}",
+            self.x_range,
+            self.x_range_len()
+        );
+
+        println!("x-sym-offset: {:?}", x_sym_offset);
+
+        println!(
+            "x-step: {:?}, x-substep: {:?}",
+            x_step_spacing_f64, x_substep_spacing_f64
+        );
+
+        println!("x-substep-range {:?}", x_substep_range);
+
         //-- grid ---
 
         if let Some(subgrid_style) = self.style.x.subgrid {
-            let start_index = (x_range_start / x_substep_spacing_f64).ceil() as i32;
-            let end_index = (x_range_end / x_substep_spacing_f64).floor() as i32;
-
-            for i in start_index..=end_index {
-                let x = i as f64 * x_substep_spacing_f64;
+            for i in x_substep_range.clone() {
+                let x = (i as f64 * x_substep_spacing_f64) + x_sym_offset;
                 let (sx, _) = self.global_to_screen((x, 0.0));
 
                 self.vertices_add_line(
@@ -389,11 +445,8 @@ where
         }
 
         if let Some(subgrid_style) = self.style.y.subgrid {
-            let start_index = (y_range_start / y_substep_spacing_f64).ceil() as i32;
-            let end_index = (y_range_end / y_substep_spacing_f64).floor() as i32;
-
-            for i in start_index..=end_index {
-                let y = i as f64 * y_substep_spacing_f64;
+            for i in y_substep_range.clone() {
+                let y = (i as f64 * y_substep_spacing_f64) + y_sym_offset;
                 let (_, sy) = self.global_to_screen((0.0, y));
 
                 self.vertices_add_line(
@@ -406,11 +459,8 @@ where
         }
 
         if let Some(grid_style) = self.style.x.grid {
-            let start_index = (x_range_start / x_step_spacing_f64).ceil() as i32;
-            let end_index = (x_range_end / x_step_spacing_f64).floor() as i32;
-
-            for i in start_index..=end_index {
-                let x = i as f64 * x_step_spacing_f64;
+            for i in x_step_range.clone() {
+                let x = (i as f64 * x_step_spacing_f64) + x_sym_offset;
                 let (sx, _) = self.global_to_screen((x, 0.0));
 
                 self.vertices_add_line(
@@ -423,11 +473,8 @@ where
         }
 
         if let Some(grid_style) = self.style.y.grid {
-            let start_index = (y_range_start / y_step_spacing_f64).ceil() as i32;
-            let end_index = (y_range_end / y_step_spacing_f64).floor() as i32;
-
-            for i in start_index..=end_index {
-                let y = i as f64 * y_step_spacing_f64;
+            for i in y_step_range.clone() {
+                let y = (i as f64 * y_step_spacing_f64) + y_sym_offset;
                 let (_, sy) = self.global_to_screen((0.0, y));
 
                 self.vertices_add_line(
@@ -466,11 +513,8 @@ where
         //-- ticks --
 
         if let Some(subtick_style) = self.style.x.subtick {
-            let start_index = (x_range_start / x_substep_spacing_f64).ceil() as i32;
-            let end_index = (x_range_end / x_substep_spacing_f64).floor() as i32;
-
-            for i in start_index..=end_index {
-                let x = i as f64 * x_substep_spacing_f64;
+            for i in x_substep_range.clone() {
+                let x = (i as f64 * x_substep_spacing_f64) + x_sym_offset;
 
                 let (sx, sy) = self.global_to_screen((x, 0.0));
 
@@ -486,11 +530,8 @@ where
         }
 
         if let Some(subtick_style) = self.style.y.subtick {
-            let start_index = (y_range_start / y_substep_spacing_f64).ceil() as i32;
-            let end_index = (y_range_end / y_substep_spacing_f64).floor() as i32;
-
-            for i in start_index..=end_index {
-                let y = i as f64 * y_substep_spacing_f64;
+            for i in y_substep_range.clone() {
+                let y = (i as f64 * y_substep_spacing_f64) + y_sym_offset;
                 let (sx, sy) = self.global_to_screen((0.0, y));
 
                 self.vertices_add_polyline(
@@ -505,11 +546,8 @@ where
         }
 
         if let Some(tick_style) = self.style.x.tick {
-            let start_index = (x_range_start / x_step_spacing_f64).ceil() as i32;
-            let end_index = (x_range_end / x_step_spacing_f64).floor() as i32;
-
-            for i in start_index..=end_index {
-                let x = i as f64 * x_step_spacing_f64;
+            for i in x_step_range.clone() {
+                let x = (i as f64 * x_step_spacing_f64) + x_sym_offset;
                 let (sx, sy) = self.global_to_screen((x, 0.0));
 
                 self.vertices_add_polyline(
@@ -524,11 +562,8 @@ where
         }
 
         if let Some(tick_style) = self.style.y.tick {
-            let start_index = (y_range_start / y_step_spacing_f64).ceil() as i32;
-            let end_index = (y_range_end / y_step_spacing_f64).floor() as i32;
-
-            for i in start_index..=end_index {
-                let y = i as f64 * y_step_spacing_f64;
+            for i in y_step_range.clone() {
+                let y = (i as f64 * y_step_spacing_f64) + y_sym_offset;
                 let (sx, sy) = self.global_to_screen((0.0, y));
 
                 self.vertices_add_polyline(
@@ -546,95 +581,99 @@ where
 
         //-- text --
 
-        let text_size = self.style.text.size;
-        let text_font = &self.style.text.font;
-        let text_max_digits = self.style.text.max_digits;
+        if let Some(text_style) = &self.style.text {
+            let text_size = text_style.size;
+            let text_font = &text_style.font;
+            let text_max_digits = text_style.max_digits;
 
-        {
-            let start_index = (x_range_start / x_step_spacing_f64).ceil() as i32;
-            let end_index = (x_range_end / x_step_spacing_f64).floor() as i32;
+            {
+                let start_index = (x_range_start / x_step_spacing_f64).ceil() as i128;
+                let end_index = (x_range_end / x_step_spacing_f64).floor() as i128;
 
-            for i in start_index..=end_index {
-                if i == 0 {
-                    continue;
-                }
-
-                let x = (&x_step_spacing * i).calc_precision(Some(50));
-                let x_f64 = x_step_spacing_f64 * i as f64;
-
-                let x_uv = lerp(x_f64, &self.x_range, &(0.0..1.0)) as f32;
-                let y_uv = lerp(0.0, &self.y_range, &(1.0..0.0)) as f32;
-
-                let text = format!("{}", decimal_format_scientific_when(&x, text_max_digits));
-
-                let text_section = TextSection::Relative(
-                    SectionBuilder::default()
-                        .add_text(Text::new(&text).with_scale(text_size))
-                        .with_screen_position((x_uv, y_uv))
-                        .with_layout(
-                            Layout::default_single_line()
-                                .h_align(HorizontalAlign::Center)
-                                .v_align(VerticalAlign::Top),
-                        )
-                        .to_owned(),
-                )
-                .into_arc_ref_cell();
-
-                let mut view = self.view.borrow_mut();
-                match view.add_text_section(text_section.clone(), &text_font.name) {
-                    Err(_) => {
-                        view.add_font(text_font.clone()).unwrap();
-                        view.add_text_section(text_section.clone(), &text_font.name)
-                            .unwrap();
+                for i in start_index..=end_index {
+                    if i == 0 {
+                        continue;
                     }
-                    _ => {}
+
+                    let x = (&x_step_spacing * i).calc_precision(None);
+                    let x_f64 = x_step_spacing_f64 * i as f64;
+
+                    let x_uv = lerp(x_f64, &self.x_range, &(0.0..1.0)) as f32;
+                    let y_uv = lerp(0.0, &self.y_range, &(1.0..0.0)) as f32;
+
+                    let text = format!("{}", decimal_format_scientific_when(&x, text_max_digits));
+
+                    let text_section = TextSection::Relative(
+                        SectionBuilder::default()
+                            .add_text(Text::new(&text).with_scale(text_size))
+                            .with_screen_position((x_uv, y_uv))
+                            .with_layout(
+                                Layout::default_single_line()
+                                    .h_align(HorizontalAlign::Center)
+                                    .v_align(VerticalAlign::Top),
+                            )
+                            .to_owned(),
+                    )
+                    .into_arc_ref_cell();
+
+                    let mut view = self.view.borrow_mut();
+                    match view.add_text_section(text_section.clone(), &text_font.name) {
+                        Err(_) => {
+                            view.add_font(text_font.clone()).unwrap();
+                            view.add_text_section(text_section.clone(), &text_font.name)
+                                .unwrap();
+                        }
+                        _ => {}
+                    }
                 }
             }
-        }
 
-        {
-            let start_index = (y_range_start / y_step_spacing_f64).ceil() as i32;
-            let end_index = (y_range_end / y_step_spacing_f64).floor() as i32;
+            {
+                let start_index = (y_range_start / y_step_spacing_f64).ceil() as i128;
+                let end_index = (y_range_end / y_step_spacing_f64).floor() as i128;
 
-            for i in start_index..=end_index {
-                if i == 0 {
-                    continue;
-                }
-
-                let y = (&y_step_spacing * i).calc_precision(Some(50));
-                let y_f64 = y_step_spacing_f64 * i as f64;
-
-                let x_uv = lerp(0.0, &self.x_range, &(0.0..1.0)) as f32;
-                let y_uv = lerp(y_f64, &self.y_range, &(1.0..0.0)) as f32;
-
-                let text = format!(" {}", decimal_format_scientific_when(&y, text_max_digits));
-
-                let text_section = TextSection::Relative(
-                    SectionBuilder::default()
-                        .add_text(Text::new(&text).with_scale(text_size))
-                        .with_screen_position((x_uv, y_uv))
-                        .with_layout(
-                            Layout::default_single_line()
-                                .h_align(HorizontalAlign::Left)
-                                .v_align(VerticalAlign::Center),
-                        )
-                        .to_owned(),
-                )
-                .into_arc_ref_cell();
-
-                let mut view = self.view.borrow_mut();
-                match view.add_text_section(text_section.clone(), &text_font.name) {
-                    Err(_) => {
-                        view.add_font(text_font.clone()).unwrap();
-                        view.add_text_section(text_section.clone(), &text_font.name)
-                            .unwrap();
+                for i in start_index..=end_index {
+                    if i == 0 {
+                        continue;
                     }
-                    _ => {}
+
+                    let y = (&y_step_spacing * i).calc_precision(None);
+                    let y_f64 = y_step_spacing_f64 * i as f64;
+
+                    let x_uv = lerp(0.0, &self.x_range, &(0.0..1.0)) as f32;
+                    let y_uv = lerp(y_f64, &self.y_range, &(1.0..0.0)) as f32;
+
+                    let text = format!(" {}", decimal_format_scientific_when(&y, text_max_digits));
+
+                    let text_section = TextSection::Relative(
+                        SectionBuilder::default()
+                            .add_text(Text::new(&text).with_scale(text_size))
+                            .with_screen_position((x_uv, y_uv))
+                            .with_layout(
+                                Layout::default_single_line()
+                                    .h_align(HorizontalAlign::Left)
+                                    .v_align(VerticalAlign::Center),
+                            )
+                            .to_owned(),
+                    )
+                    .into_arc_ref_cell();
+
+                    let mut view = self.view.borrow_mut();
+                    match view.add_text_section(text_section.clone(), &text_font.name) {
+                        Err(_) => {
+                            view.add_font(text_font.clone()).unwrap();
+                            view.add_text_section(text_section.clone(), &text_font.name)
+                                .unwrap();
+                        }
+                        _ => {}
+                    }
                 }
             }
         }
 
         //-----------
+
+        println!();
     }
 
     fn display_function_graphs(&mut self) {

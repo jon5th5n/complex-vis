@@ -136,6 +136,12 @@ impl<'a> App<'a> {
         self.multiview.initialize(surface, surface_config, &device);
         self.multiview.set_clear_color(wgpu::Color::WHITE);
 
+        {
+            let canvas_style = self.canvas.style_get_mut();
+
+            // canvas_style.text = None;
+        }
+
         let square = FunctionGraph {
             function: |x: f64, p: &GraphParam| (x - p.a).powi(2),
             style: GraphStyle {

@@ -31,20 +31,19 @@ impl Default for GraphStyle {
 }
 
 #[derive(Debug, Clone)]
-pub struct BackgroundStyle {
+pub struct EnviromentStyle {
     // pub background_color: RGBA,
     pub x: DimensionStyle,
     pub y: DimensionStyle,
-    pub text: TextStyle,
+    pub text: Option<TextStyle>,
 }
 
-impl Default for BackgroundStyle {
+impl Default for EnviromentStyle {
     fn default() -> Self {
         Self {
-            // background_color: RGBA::WHITE,
             x: DimensionStyle::default(),
             y: DimensionStyle::default(),
-            text: TextStyle::default(),
+            text: Some(TextStyle::default()),
         }
     }
 }
