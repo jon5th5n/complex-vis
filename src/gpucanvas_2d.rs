@@ -277,7 +277,7 @@ where
     }
 
     fn calculate_dynamic_spacing(range_len: f64, num_steps: u32) -> Decimal {
-        let range_len = decimal_from_f64(range_len);
+        let range_len = decimal_from_to_string(range_len);
         let num_steps = Decimal::from(num_steps);
 
         let base = range_len / num_steps;
@@ -413,20 +413,20 @@ where
         let y_substep_range = y_substep_start_index..=y_substep_end_index;
         let y_step_range = y_step_start_index..=y_step_end_index;
 
-        println!(
-            "x-range: {{{:?}, len: {:?}}}",
-            self.x_range,
-            self.x_range_len()
-        );
+        // println!(
+        //     "x-range: {{{:?}, len: {:?}}}",
+        //     self.x_range,
+        //     self.x_range_len()
+        // );
 
-        println!("x-sym-offset: {:?}", x_sym_offset);
+        // println!("x-sym-offset: {:?}", x_sym_offset);
 
-        println!(
-            "x-step: {:?}, x-substep: {:?}",
-            x_step_spacing_f64, x_substep_spacing_f64
-        );
+        // println!(
+        //     "x-step: {:?}, x-substep: {:?}",
+        //     x_step_spacing_f64, x_substep_spacing_f64
+        // );
 
-        println!("x-substep-range {:?}", x_substep_range);
+        // println!("x-substep-range {:?}", x_substep_range);
 
         //-- grid ---
 

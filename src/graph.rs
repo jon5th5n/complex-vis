@@ -1,8 +1,7 @@
 use wgpu_text::glyph_brush::ab_glyph::FontArc;
 
+use crate::decimal_math::Decimal;
 use crate::{color::RGBA, gpuview::Font};
-
-pub type Decimal = fraction::BigDecimal;
 
 /// Structure respresenting the graph of a function.
 ///

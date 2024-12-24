@@ -1,12 +1,15 @@
 use fraction::{generic::GenericInteger, BigDecimal, BigUint};
 
-pub fn decimal_log10_ceil(val: &BigDecimal) -> i32 {
+pub type Decimal = BigDecimal;
+// pub type Decimal = fraction::DynaDecimal<u128, usize>;
+
+pub fn decimal_log10_ceil(val: &Decimal) -> i32 {
     if val.is_sign_negative() {
         panic!("It is not allowed to take the logarithm of a negative number")
     }
 
-    let dec1 = BigDecimal::from(1);
-    let dec01 = BigDecimal::from(0.1);
+    let dec1 = Decimal::from(1);
+    let dec01 = Decimal::from(0.1);
 
     let mut dec = val.clone();
 
@@ -28,9 +31,9 @@ pub fn decimal_log10_ceil(val: &BigDecimal) -> i32 {
     digits
 }
 
-pub fn decimal_exp10(exp: i32) -> BigDecimal {
-    let dec10 = BigDecimal::from(10);
-    let dec1 = BigDecimal::from(1);
+pub fn decimal_exp10(exp: i32) -> Decimal {
+    let dec10 = Decimal::from(10);
+    let dec1 = Decimal::from(1);
 
     let exp_sign = exp.signum();
     let exp_abs = exp.abs() as u32;
@@ -38,7 +41,7 @@ pub fn decimal_exp10(exp: i32) -> BigDecimal {
     let dec = match exp_sign {
         1 => {
             let res = BigUint::_10().pow(exp_abs);
-            BigDecimal::from(res)
+            Decimal::from(res)
         }
         -1 => {
             let mut dec = dec1;
@@ -55,19 +58,24 @@ pub fn decimal_exp10(exp: i32) -> BigDecimal {
     dec
 }
 
-/// Prefere to use over `BigDecimal::from(f64)` since its implementation is prone to blocking execution when used for very small numbers
-pub fn decimal_from_f64(value: f64) -> BigDecimal {
+/// Creates a `Decimal` from a type `T` by first converting it to a `&str` and then using `Decimal::from(&str)`
+pub fn decimal_from_to_string<T: ToString>(value: T) -> Decimal {
+    Decimal::from(value.to_string().as_str())
+}
+
+/// Could be used instead of `Decimal::from(f64)` since its implementation is prone to blocking execution when used for very small numbers
+pub fn decimal_from_f64(value: f64) -> Decimal {
     let (f64_norm, f64_exp) = normalize_f64(value);
 
-    let dec_norm = BigDecimal::from(f64_norm);
+    let dec_norm = Decimal::from(f64_norm);
     let dec = dec_norm * decimal_exp2(f64_exp);
 
     dec
 }
 
-pub fn decimal_exp2(exp: i32) -> BigDecimal {
-    let dec2 = BigDecimal::from(2);
-    let dec1 = BigDecimal::from(1);
+pub fn decimal_exp2(exp: i32) -> Decimal {
+    let dec2 = Decimal::from(2);
+    let dec1 = Decimal::from(1);
     let bigu1 = BigUint::_1();
 
     let exp_sign = exp.signum();
@@ -76,7 +84,7 @@ pub fn decimal_exp2(exp: i32) -> BigDecimal {
     let dec = match exp_sign {
         1 => {
             let res = bigu1 << exp_abs;
-            BigDecimal::from(res)
+            Decimal::from(res)
         }
         -1 => {
             let mut dec = dec1;
@@ -114,9 +122,9 @@ fn normalize_f64(value: f64) -> (f64, i32) {
     }
 }
 
-pub fn decimal_format_scientific(dec: &BigDecimal) -> String {
-    let dec10 = BigDecimal::from(10);
-    let dec1 = BigDecimal::from(1);
+pub fn decimal_format_scientific(dec: &Decimal) -> String {
+    let dec10 = Decimal::from(10);
+    let dec1 = Decimal::from(1);
 
     let mut dec = dec.clone();
 
@@ -138,9 +146,9 @@ pub fn decimal_format_scientific(dec: &BigDecimal) -> String {
     format!("{}e{}", dec.calc_precision(None), digits)
 }
 
-pub fn decimal_format_scientific_when(dec: &BigDecimal, max_digits: u32) -> String {
-    let dec10 = BigDecimal::from(10);
-    let dec1 = BigDecimal::from(1);
+pub fn decimal_format_scientific_when(dec: &Decimal, max_digits: u32) -> String {
+    let dec10 = Decimal::from(10);
+    let dec1 = Decimal::from(1);
 
     let mut normalized_dec = dec.clone();
 

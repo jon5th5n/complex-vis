@@ -221,11 +221,11 @@ impl ApplicationHandler for App<'_> {
                     .borrow()
                     .get_render_vertices_len();
 
-                // println!(
-                //     "{}ms with {} vertices",
-                //     self.delta_t.as_micros() as f32 / 1000.0,
-                //     num_vertices
-                // );
+                println!(
+                    "{}ms with {} vertices",
+                    self.delta_t.as_micros() as f32 / 1000.0,
+                    num_vertices
+                );
 
                 self.canvas.display();
 
