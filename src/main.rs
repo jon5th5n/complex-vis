@@ -115,6 +115,7 @@ impl<'a> App<'a> {
                         wgpu::Limits::default()
                     },
                     label: Some("Renderer Created Device"),
+                    memory_hints: wgpu::MemoryHints::Performance,
                 },
                 None, // Trace path
             )
